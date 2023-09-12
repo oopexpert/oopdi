@@ -106,7 +106,7 @@ The `@InjectSet` annotation is a versatile tool that simplifies the management o
 
 The `@PostConstruct` annotation is a powerful tool for handling object initialization within your application. It allows you to designate a single method in a class as the initialization routine, ensuring that it runs after the class's construction, but before it's made available for use. With `@PostConstruct`, you can streamline the setup of your objects, execute necessary configuration steps, and ensure that dependencies are ready for use. This annotation enforces a single initialization method per class, promoting code clarity and predictable object lifecycles.
 
-### Scoping
+## Scoping
 
 Scoping is a fundamental concept in OOPDI, enabling you to define how long objects live and under what conditions they can be accessed. OOPDI provides several built-in scopes that cater to different use cases:
 
@@ -120,7 +120,7 @@ Scoping is a fundamental concept in OOPDI, enabling you to define how long objec
 
 Scoping in OOPDI provides developers with a powerful mechanism to manage object lifecycles, control access, and enforce encapsulation. Explore the [Scoping](#scoping) section to learn more about each scope's characteristics and how to leverage them effectively in your projects.
 
-### Core Concepts
+## Core Concepts
 
 OOPDI is founded on several core concepts that shape its design philosophy and guide its usage:
 
@@ -133,3 +133,48 @@ OOPDI is founded on several core concepts that shape its design philosophy and g
 - **Object Network and Association**: Every class managed by OOPDI is part of an object network derived from a single root class provided during the framework's initialization. Additionally, each class is reachable through associations, ensuring that every dependency is well-defined and accessible in a structured manner.
 
 Explore these core concepts in depth within the framework to harness their benefits and build modular, maintainable applications effectively.
+
+## Code Examples
+
+In this section, we provide practical code examples that demonstrate how to use OOPDI effectively in various scenarios. These examples serve as quick guides to help you get started with the framework in your own projects. Feel free to explore and adapt them to your specific use cases.
+
+### Basic Dependency Injection
+
+- **Injecting a Singleton**: Show how to use the `@Injectable` annotation to inject a singleton instance of a class.
+  
+- **Thread-Scoped Dependency**: Demonstrate how to create and manage thread-scoped dependencies using OOPDI.
+  
+- **Local Scope Usage**: Illustrate the use of local-scoped dependencies within a specific context or method.
+  
+- **Request Scope in Action**: Showcase how to leverage request-scoped dependencies, including use cases beyond traditional HTTP requests.
+
+### Advanced Dependency Management
+
+- **Managing Collections with `@InjectSet`**: Explore how to use `@InjectSet` to manage and inject sets of dependencies, even when no matching classes are found.
+
+- **Fine-Grained Dependency Injection**: Dive into examples of using `@InjectInstance` for precise, type-specific dependency injection.
+
+### Object Initialization
+
+- **Using `@PostConstruct`**: Walk through the process of initializing objects using the `@PostConstruct` annotation. Highlight how it simplifies object setup and configuration.
+
+### Scoping Strategies
+
+- **Global Scope Example**: Provide a scenario where global-scoped dependencies are essential and demonstrate their usage.
+
+- **Thread Scope in Multithreading**: Showcase thread-scoped dependencies in a multi-threaded environment to ensure thread safety.
+
+- **Local Scope Use Case**: Describe a use case where local-scoped dependencies provide controlled, short-lived functionality.
+
+- **Custom Scopes (if applicable)**: If you have plans to implement custom scopes in the future, you can add examples demonstrating their usage here.
+
+### Advanced Features and Best Practices
+
+- **Circular Dependency Resolution**: Demonstrate how OOPDI resolves circular dependencies to maintain object integrity.
+
+- **Testing Strategies**: Present strategies for testing classes and dependencies managed by OOPDI effectively.
+
+- **Error Handling**: Illustrate best practices for handling exceptions and errors when working with the framework.
+
+These code examples aim to provide practical insights into using OOPDI in your projects. We encourage you to explore these examples, adapt them to your specific requirements, and leverage the full potential of OOPDI for efficient dependency management.
+
