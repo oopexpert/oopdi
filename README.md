@@ -3,7 +3,6 @@
 1. [Introduction](#introduction)
    - Overview
    - Features
-   - Installation
 
 2. [Getting Started](#getting-started)
    - Prerequisites
@@ -67,3 +66,33 @@
 13. [Acknowledgments](#acknowledgments)
 
 14. [Contact](#contact)
+
+# Introduction
+
+Welcome to OOPDI, a lightweight and versatile Dependency Injection (DI) framework designed to simplify object management and promote best practices in software development. OOPDI empowers developers to efficiently manage dependencies, enforce encapsulation, and streamline the initialization process of objects within their applications.
+
+## Overview
+
+Dependency Injection is a fundamental concept in modern software development, promoting loose coupling, testability, and maintainability of code. OOPDI takes this concept further by introducing innovative features and principles to enhance your dependency management experience.
+
+## Features
+
+OOPDI offers a rich set of features and concepts:
+
+- **Annotations**: Use intuitive annotations like `@Injectable`, `@InjectInstance`, `@InjectSet`, and `@PostConstruct` to define and configure dependencies.
+
+- **Scoping**: Manage the lifecycle and scope of objects with fine-grained control, including Global, Thread, Local, Request, and custom scopes.
+
+- **Core Concepts**: Adhere to principles such as no code generation, object network association, and proper handling of exceptions.
+
+- **Object Parameter Paradigm**: Embrace functional programming by enforcing interactions through `Runnable`, `Supplier`, `Consumer`, and `Function` interfaces.
+
+- **Request Scope**: Manage dependencies within isolated contexts, not limited to HTTP requests, but also applicable to various application scenarios.
+
+- **Initialization with @PostConstruct**: Simplify and standardize object initialization with the `@PostConstruct` method annotation.
+
+- **Usage Guidelines**: Discover best practices for utilizing OOPDI to enforce encapsulation and controlled scope in your projects.
+
+- **Advanced Topics**: Explore advanced concepts, customization options, and strategies for testing and error handling.
+
+
