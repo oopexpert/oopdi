@@ -17,8 +17,8 @@
    - Request Scope
 
 4. [Core Concepts](#core-concepts)
-   - No Code Generation
    - Object Network and Association
+   - Limited Access to Instances
    - Object Parameter Paradigm
 
 5. [Object Parameter Paradigm](#object-parameter-paradigm)
@@ -127,8 +127,6 @@ OOPDI is founded on several core concepts that shape its design philosophy and g
 - **Parameter Object Paradigm**: OOPDI enforces the Parameter Object Paradigm, which emphasizes interactions through functional interfaces—`Runnable`, `Supplier`, `Consumer`, and `Function`. This promotes clean, modular code by ensuring that all interactions with instances follow a functional paradigm.
 
 - **Limited Access to Instances**: OOPDI adheres to a principle where direct access to instances is restricted. Instead, developers interact with instances through method references, following the functional concept of `Runnable`, `Supplier`, `Consumer`, and `Function`. This approach enhances encapsulation and maintains control over object lifecycles.
-
-- **No Code Generation**: OOPDI takes pride in its code simplicity. It achieves its functionality without resorting to on-the-fly code generation, keeping your codebase clean, predictable, and easy to maintain.
 
 - **Object Network and Association**: Every class managed by OOPDI is part of an object network derived from a single root class provided during the framework's initialization. Additionally, each class is reachable through associations, ensuring that every dependency is well-defined and accessible in a structured manner.
 
