@@ -11,8 +11,8 @@ import java.util.function.Supplier;
 
 public class OOPDI<T> {
 	
-    private Map<Class<?>, Object> globalInstances = new HashMap<>();
-    private Map<Thread, Map<Class<?>, Object>> threadInstanceMaps = synchronizedMap(new HashMap<>());
+    private InstancesState globalInstances = new InstancesState();
+    private Map<Thread, InstancesState> threadInstanceMaps = synchronizedMap(new HashMap<>());
     
 	private Class<T> rootClazz;
 	private ContextExecution contextExecution;
@@ -26,10 +26,10 @@ public class OOPDI<T> {
     	return new Context<T>(this, rootClazz, globalInstances, getThreadInstancesMap(), profiles);
     }
 
-	private synchronized Map<Class<?>, Object> getThreadInstancesMap() {
+	private synchronized InstancesState getThreadInstancesMap() {
 		
 		if (threadInstanceMaps.get(currentThread()) == null) {
-			threadInstanceMaps.put(currentThread(), new HashMap<>());
+			threadInstanceMaps.put(currentThread(), new InstancesState());
 		}
 		
 		return threadInstanceMaps.get(currentThread());

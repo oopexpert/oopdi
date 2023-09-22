@@ -28,14 +28,15 @@ import de.oopexpert.oopdi.exception.NoClassesLeftAfterFiltering;
 public class Context<T> {
 	
     private Map<Class<?>, Set<Class<?>>> componentSets  = new HashMap<>();
-    private Map<Class<?>, Object>      globalInstances;
-    private Map<Class<?>, Object>      threadInstances;
-    private Map<Class<?>, Object>      localInstances = new HashMap<>();
+    
+    private InstancesState globalInstances;
+    private InstancesState threadInstances;
+    private InstancesState localInstances = new InstancesState();
 
 	private String[] profiles;
 	private OOPDI<T> oopdi;
     
-	public Context(OOPDI<T> oopdi, Class<T> rootClazz, Map<Class<?>, Object> globalInstances, Map<Class<?>, Object> threadInstances, String[] profiles) {
+	public Context(OOPDI<T> oopdi, Class<T> rootClazz, InstancesState globalInstances, InstancesState threadInstances, String[] profiles) {
 		this.oopdi = oopdi;
 		this.globalInstances = globalInstances;
 		this.threadInstances = threadInstances;
@@ -75,10 +76,8 @@ public class Context<T> {
 	private Set<Object> getOrCreateInstances(Class<?> hint) throws ClassNotFoundException, IOException, URISyntaxException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException {
 		Set<Object> components = new HashSet<>();
 		
-		Set<Class<?>> set = componentSets.get(hint);
-		
-		for (Class<?> class1 : set) {
-			components.add(getOrCreate(class1));
+		for (Class<?> clazz : componentSets.get(hint)) {
+			components.add(getOrCreate(clazz));
 		}
 		return components;
 	}
@@ -172,17 +171,37 @@ public class Context<T> {
 	
 	private <X> X getOrCreateInjectable(Class<X> x) throws InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException, ClassNotFoundException, IOException, URISyntaxException {
 		Class<?> c = determineRelevantClass(x);
-		Map<Class<?>, Object> scopedMap = getScopedInstancesMapBy(scopeOf(c));
+		InstancesState scopedMap = getScopedInstancesState(scopeOf(c));
 		X instance;
-		if (scopedMap.get(c) == null) {
-			instance = instanciateWith((Constructor<?>) getConstructor(c));
-			scopedMap.put(c, instance);
+		if (scopedMap.instances.get(c) == null) {
+			instance = createInstance(c);
+			scopedMap.instances.put(c, instance);
 			processFields(instance);
 			executePostConstructMethod(instance);
 		} else {
-			instance = (X) scopedMap.get(c);
+			instance = (X) scopedMap.instances.get(c);
 		}
 		return instance;
+	}
+
+	private <X> X createInstance(Class<?> c) throws InstantiationException, IllegalAccessException, InvocationTargetException, ClassNotFoundException, IOException, URISyntaxException, NoSuchMethodException {
+		Set<Class<?>> constructorInjection = getScopedInstancesState(scopeOf(c)).constructorInjection;
+		synchronized (constructorInjection) {
+			X instance;
+			if (constructorInjection.contains(c)) {
+				throw new UnderConstruction(c.getName() + " is still under construction.");
+			}
+			constructorInjection.add(c);
+			try {
+				Constructor<?> constructor = getConstructor(c);
+				instance = instanciateWith(constructor);
+			} catch (UnderConstruction cd) {
+				throw new CannotInject("Cycle in dependencies detected while performing constructor injection on " + c.getName(), cd);
+			} finally {
+				constructorInjection.remove(c);
+			}
+			return instance;
+		}
 	}
 
 	private void executePostConstructMethod(Object instance) throws IllegalAccessException, IllegalArgumentException, InvocationTargetException, ClassNotFoundException, InstantiationException, NoSuchMethodException, IOException, URISyntaxException {
@@ -307,7 +326,7 @@ public class Context<T> {
 	}
 
 	
-	private Map<Class<?>, Object> getScopedInstancesMapBy(Scope scope) {
+	private InstancesState getScopedInstancesState(Scope scope) {
 		return scope.select(globalInstances, threadInstances, localInstances);
 	}
 
@@ -318,8 +337,8 @@ public class Context<T> {
 	public <X> X getObject(Class<X> clazz) {
 		try {
 			Class<?> c = determineRelevantClass(clazz);
-			Map<Class<?>, Object> scopedMap = getScopedInstancesMapBy(scopeOf(c));
-			return (X) scopedMap.get(c);
+			InstancesState scopedMap = getScopedInstancesState(scopeOf(c));
+			return (X) scopedMap.instances.get(c);
 		} catch (ClassNotFoundException | IOException | URISyntaxException e) {
 			throw new RuntimeException(e);
 		}
