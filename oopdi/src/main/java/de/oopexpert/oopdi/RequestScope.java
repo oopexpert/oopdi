@@ -6,85 +6,86 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 import de.oopexpert.oopdi.exception.NoRequestScopeAvailable;
 
 public abstract class RequestScope {
 
-    private static Map<Thread, List<Map<Class<?>, Object>>> requestInstanceMaps = synchronizedMap(new HashMap<>());
+    private static Map<Thread, List<InstancesState>> requestInstanceMaps = synchronizedMap(new HashMap<>());
 	
-    private abstract static class FunctionRequest extends RequestScope {
+    private abstract static class FunctionRequest<PARAMETER, RESULT, OPERATION extends Function<PARAMETER, RESULT>> extends RequestScope {
 
-    	protected abstract <X,Y>  Y exec(BiFunction<Context<?>, X,Y> f, X x);
+    	protected abstract RESULT exec(Function<Context<?>, OPERATION> prepareOperation, PARAMETER parameter);
 
     }
 
-    private abstract static class SupplierRequest extends RequestScope {
+    private abstract static class SupplierRequest<RESULT, OPERATION extends Supplier<RESULT>> extends RequestScope {
     	
-    	protected abstract <Y>  Y exec(Function<Context<?>, Y> f);
+    	protected abstract RESULT exec(Function<Context<?>, OPERATION> prepareOperation);
 
     }
 
-    private abstract static class ConsumerRequest extends RequestScope {
+    private abstract static class ConsumerRequest<PARAMETER, OPERATION extends Consumer<PARAMETER>> extends RequestScope {
 
-    	protected abstract <X> void exec(BiConsumer<Context<?>,X> f, X x);
+    	protected abstract void exec(Function<Context<?>, OPERATION> prepareOperation, PARAMETER parameter);
 
     }
 
-    private abstract static class RunnableRequest extends RequestScope {
+    private abstract static class RunnableRequest<OPERATION extends Runnable> extends RequestScope {
 
-    	protected abstract void exec(Consumer<Context<?>> f);
+    	protected abstract void exec(Function<Context<?>, OPERATION> operation);
 
     }
 
 	private static void init(RequestScope request) {
-		List<Map<Class<?>, Object>> list = requestInstanceMaps.get(Thread.currentThread());
+		List<InstancesState> list = requestInstanceMaps.get(Thread.currentThread());
 		if (list == null) {
 			list = new ArrayList<>();
 			requestInstanceMaps.put(Thread.currentThread(), list);
 		}
-		list.add(0, new HashMap<>());
+		list.add(0, new InstancesState());
 	}
 	
 
-	public static  <X,Y> Y execute(Class<?> clazz, OOPDI<?> oopdi, BiFunction<Context<?>, X,Y> f, X x) {
-		return new FunctionRequest() {
-			
+	public static  <RESULT, OPERATION extends Function<PARAMETER, RESULT>, PARAMETER> RESULT executeFunction(Class<?> clazz, OOPDI<?> oopdi, Function<Context<?>, OPERATION> prepareOperation, PARAMETER parameter) {
+		return new FunctionRequest<PARAMETER, RESULT, OPERATION>() {
+
+
 			@Override
-			protected <A, B> B exec(BiFunction<Context<?>, A, B> f, A x) {
+			protected RESULT exec(Function<Context<?>, OPERATION> prepareOperation, PARAMETER parameter) {
 				
 				try {
 					
 					init(this);
 					
-					return f.apply(oopdi.createContext(), x);
+					return prepareOperation.apply(oopdi.createContext()).apply(parameter);
 					
 				} finally {
 					cleanup();
-				}
+				}			
 				
 			}
 
-		}.exec(f, x);
+		}.exec(prepareOperation, parameter);
 		
 	}
 
-	public static <Y>  Y execute(Class<?> clazz, OOPDI<?> oopdi, Function<Context<?>, Y> f) {
+	public static <RESULT, OPERATION extends Supplier<RESULT>> RESULT executeSupplier(Class<?> clazz, OOPDI<?> oopdi, Function<Context<?>, OPERATION> prepareOperation) {
 		
-		return new SupplierRequest() {
+		return new SupplierRequest<RESULT, OPERATION>() {
 			
 			@Override
-			protected <B> B exec(Function<Context<?>, B> f) {
+			protected RESULT exec(Function<Context<?>, OPERATION> prepareOperation) {
 				
 				try {
 					
 					init(this);
 					
-					return f.apply(oopdi.createContext());
+					OPERATION operation = prepareOperation.apply(oopdi.createContext());
+					return operation.get();
 					
 				} finally {
 					cleanup();
@@ -92,22 +93,22 @@ public abstract class RequestScope {
 				
 			}
 
-		}.exec(f);
+		}.exec(prepareOperation);
 
 	}
 
-	public static <X> void execute(Class<?> clazz, OOPDI<?> oopdi, BiConsumer<Context<?>, X> f, X x) {
+	public static <PARAMETER, OPERATION extends Consumer<PARAMETER>> void executeConsumer(Class<?> clazz, OOPDI<?> oopdi, Function<Context<?>, OPERATION> prepareOperation, PARAMETER parameter) {
 		
-		new ConsumerRequest() {
+		new ConsumerRequest<PARAMETER, OPERATION>() {
 			
 			@Override
-			protected <A> void exec(BiConsumer<Context<?>, A> f, A x) {
-				
+			protected void exec(Function<Context<?>, OPERATION> prepareOperation, PARAMETER parameter) {
+
 				try {
 					
 					init(this);
 					
-					f.accept(oopdi.createContext(), x);
+					prepareOperation.apply(oopdi.createContext()).accept(parameter);
 					
 				} finally {
 					cleanup();
@@ -115,30 +116,30 @@ public abstract class RequestScope {
 				
 			}
 
-		}.exec(f, x);
+		}.exec(prepareOperation, parameter);
 
 	}
 
-	public static void execute(Class<?> clazz, OOPDI<?> oopdi, Consumer<Context<?>> r) {
-		new RunnableRequest() {
+	public static <OPERATION extends Runnable> void executeRunnable(Class<?> clazz, OOPDI<?> oopdi, Function<Context<?>, OPERATION> prepareOperation) {
+		new RunnableRequest<OPERATION>() {
 			@Override
-			protected void exec(Consumer<Context<?>> f) {
+			protected void exec(Function<Context<?>, OPERATION> prepareOperation) {
 				try {
 					
 					init(this);
 					
-					f.accept(oopdi.createContext());
+					prepareOperation.apply(oopdi.createContext()).run();
 					
 				} finally {
 					cleanup();
 				}
 				
 			}
-		}.exec(r);
+		}.exec(prepareOperation);
 	}
 
 	private static void cleanup() {
-		List<Map<Class<?>, Object>> list = requestInstanceMaps.get(Thread.currentThread());
+		List<InstancesState> list = requestInstanceMaps.get(Thread.currentThread());
 		list.remove(0);
 		if (list.isEmpty()) {
 			requestInstanceMaps.remove(Thread.currentThread());
@@ -146,17 +147,24 @@ public abstract class RequestScope {
 	}
 
 	public static Object getRequestScopeInstance(Class<?> clazz) {
-		return getRequestScopedInstances().get(clazz);
+		return getRequestScopedInstances().instances.get(clazz);
 	}
 
-	public static Map<Class<?>, Object> getRequestScopedInstances() {
-		List<Map<Class<?>, Object>> list = requestInstanceMaps.get(Thread.currentThread());
-		if (list == null) throw new NoRequestScopeAvailable();
+	public static InstancesState getRequestScopedInstances() {
+		List<InstancesState> list = requestInstanceMaps.get(Thread.currentThread());
+		if (list == null) {
+			throw new NoRequestScopeAvailable();
+		}
 		return list.get(0);
 	}
 
 	public static  <T> void getRequestScopeInstance(Class<T> clazz, T t) {
-		getRequestScopedInstances().put(clazz, t);
+		getRequestScopedInstances().instances.put(clazz, t);
+	}
+
+
+	public static InstancesState getRequestInstances() {
+		return getRequestScopedInstances();
 	}
 
 }

@@ -1,6 +1,9 @@
 package de.oopexpert.oopdi;
 
-import static de.oopexpert.oopdi.RequestScope.execute;
+import static de.oopexpert.oopdi.RequestScope.executeConsumer;
+import static de.oopexpert.oopdi.RequestScope.executeSupplier;
+import static de.oopexpert.oopdi.RequestScope.executeFunction;
+import static de.oopexpert.oopdi.RequestScope.executeRunnable;
 
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -15,37 +18,37 @@ public class ContextExecution {
 	}
 	
 	public <T, X,Y> Y execFunction(Class<T> clazz, Function<T, Function<X,Y>> f, X x) {
-		return execute(clazz, oopdi, getFunctionWithContext(clazz, f)).apply(x);
+		return executeFunction(clazz, oopdi, getFunctionWithContext(clazz, f), x);
 	}
 
 	private <T, X, Y> Function<Context<?>, Function<X, Y>> getFunctionWithContext(Class<T> clazz, Function<T, Function<X, Y>> f) {
-		return (context) -> f.apply(context.getObject(clazz))::apply;
+		return (context) -> f.apply(context.getOrCreateObject(clazz))::apply;
 	}
 	
 	
 	public <T, Y> Y execSupplier(Class<T> clazz, Function<T, Supplier<Y>> f) {
-		return execute(clazz, oopdi, getSupplierWithContext(clazz, f)).get();
+		return executeSupplier(clazz, oopdi, getSupplierWithContext(clazz, f));
 	}
 
 	private <T, Y> Function<Context<?>, Supplier<Y>> getSupplierWithContext(Class<T> clazz, Function<T, Supplier<Y>> f) {
-		return (context) -> f.apply(context.getObject(clazz))::get;
+		return (context) -> f.apply(context.getOrCreateObject(clazz))::get;
 	}
 	
 	
 	public <T, X> void execConsumer(Class<T> clazz, Function<T, Consumer<X>> f, X x) {
-		execute(clazz, oopdi, getConsumerWithContext(clazz, f)).accept(x);
+		executeConsumer(clazz, oopdi, getConsumerWithContext(clazz, f), x);
 	}
 	
 	private <T, X> Function<Context<?>, Consumer<X>> getConsumerWithContext(Class<T> clazz, Function<T, Consumer<X>> f) {
-		return (context) -> f.apply(context.getObject(clazz))::accept;
+		return (context) -> f.apply(context.getOrCreateObject(clazz))::accept;
 	}
 
 	public <T> void execRunnable(Class<T> clazz, Function<T, Runnable> f) {
-		execute(clazz, oopdi, getRunnableWithContext(clazz, f)).run();
+		executeRunnable(clazz, oopdi, getRunnableWithContext(clazz, f));
 	}
 
 	private <T> Function<Context<?>, Runnable> getRunnableWithContext(Class<T> clazz, Function<T, Runnable> f) {
-		return (context) -> f.apply(context.getObject(clazz))::run;
+		return (context) -> f.apply(context.getOrCreateObject(clazz))::run;
 	}
 
 

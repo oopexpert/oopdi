@@ -4,27 +4,29 @@ public enum Scope {
 
 	GLOBAL {
 		@Override
-		InstancesState select(InstancesState globalInstances, InstancesState threadInstances,
-				InstancesState localInstances) {
+		InstancesState select(InstancesState globalInstances, InstancesState threadInstances) {
 			return globalInstances;
 		}
 	},
 	THREAD {
 		@Override
-		InstancesState select(InstancesState globalInstances, InstancesState threadInstances,
-				InstancesState localInstances) {
+		InstancesState select(InstancesState globalInstances, InstancesState threadInstances) {
 			return threadInstances;
 		}
 	},
 	LOCAL {
 		@Override
-		InstancesState select(InstancesState globalInstances, InstancesState threadInstances,
-				InstancesState localInstances) {
-			return localInstances;
+		InstancesState select(InstancesState globalInstances, InstancesState threadInstances) {
+			return new InstancesState();
+		}
+	},
+	REQUEST {
+		@Override
+		InstancesState select(InstancesState globalInstances, InstancesState threadInstances) {
+			return RequestScope.getRequestInstances();
 		}
 	};
-	
-	abstract InstancesState select(InstancesState globalInstances, InstancesState threadInstances,
-			InstancesState localInstances);
+
+	abstract InstancesState select(InstancesState globalInstances, InstancesState threadInstances);
 	
 }

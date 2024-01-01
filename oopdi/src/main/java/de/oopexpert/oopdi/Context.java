@@ -24,6 +24,8 @@ import de.oopexpert.oopdi.exception.CannotInject;
 import de.oopexpert.oopdi.exception.MultipleClassesLeftAfterFiltering;
 import de.oopexpert.oopdi.exception.MultipleConstructors;
 import de.oopexpert.oopdi.exception.NoClassesLeftAfterFiltering;
+import net.sf.cglib.proxy.Enhancer;
+import net.sf.cglib.proxy.MethodInterceptor;
 
 public class Context<T> {
 	
@@ -31,18 +33,21 @@ public class Context<T> {
     
     private InstancesState globalInstances;
     private InstancesState threadInstances;
-    private InstancesState localInstances = new InstancesState();
+	private Map<Class<?>, Object> proxies;
+
 
 	private String[] profiles;
 	private OOPDI<T> oopdi;
-    
-	public Context(OOPDI<T> oopdi, Class<T> rootClazz, InstancesState globalInstances, InstancesState threadInstances, String[] profiles) {
+
+	public Context(OOPDI<T> oopdi, Class<T> rootClazz, InstancesState globalInstances, InstancesState threadInstances, Map<Class<?>, Object> proxies, String[] profiles) {
 		this.oopdi = oopdi;
 		this.globalInstances = globalInstances;
 		this.threadInstances = threadInstances;
+		this.proxies = proxies;
 		this.profiles = profiles;
 		try {
 			this.getOrCreate(rootClazz);
+			proxies.put(rootClazz, proxy(rootClazz));
 		} catch (ClassNotFoundException | InstantiationException | IllegalAccessException
 				| InvocationTargetException | NoSuchMethodException | IllegalArgumentException | IOException
 				| URISyntaxException e) {
@@ -77,17 +82,34 @@ public class Context<T> {
 		Set<Object> components = new HashSet<>();
 		
 		for (Class<?> clazz : componentSets.get(hint)) {
-			components.add(getOrCreate(clazz));
+			
+			Object object = getOrCreateSetInstance(clazz);
+			
+			components.add(proxyIfNotExists(object));
 		}
 		return components;
 	}
 
 	private void inject(Object instance, Field field) throws IllegalArgumentException, IllegalAccessException, ClassNotFoundException, InstantiationException, InvocationTargetException, NoSuchMethodException, IOException, URISyntaxException {
 		try {
-			field.set(instance, getOrCreate(field.getType()));
+			proxyIfNotExists(instance);
+			field.set(instance, proxyIfNotExists(getOrCreate(field.getType())));
+			field.set(proxyIfNotExists(instance), proxyIfNotExists(getOrCreate(field.getType())));
 		} catch (NoClassesLeftAfterFiltering | MultipleClassesLeftAfterFiltering e) {
 			throw new CannotInject("Cannot inject object of type '" + field.getType().getName() + "' into field '" + field.getName() + "' of type '" + field.getDeclaringClass().getName() + "'", e);
 		}
+	}
+
+	private <B> B proxyIfNotExists(B instance) {
+		if (!proxies.containsKey(instance.getClass())) {
+			proxies.put(instance.getClass(), proxy(instance.getClass()));
+	    	//System.out.println("Create Proxy for class " + instance.getClass().getName());
+			return (B) proxies.get(instance.getClass());
+		} else {
+	    	//System.out.println("Get Proxy for class " + instance.getClass().getName());
+			return (B) proxies.get(instance.getClass());
+		}
+		
 	}
 	
 	private Set<Class<?>> getDerivedClasses(Class<?> parentClass, String packageName) throws ClassNotFoundException, IOException, URISyntaxException {
@@ -158,7 +180,7 @@ public class Context<T> {
 	}
 
 
-	private Object getOrCreate(Class<?> c) throws ClassNotFoundException, IOException, URISyntaxException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
+	public <A> A getOrCreate(Class<A> c) throws ClassNotFoundException, IOException, URISyntaxException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
 	    if (c.isAnnotationPresent(Injectable.class) || Modifier.isAbstract(c.getModifiers())) {
 	    	if (c.isAnnotationPresent(Injectable.class) && Modifier.isAbstract(c.getModifiers())) {
 	    		throw new CannotInject("Class '" + c.getName() + "' is annotated with '@Injectable' but it is abstract and therefore cannot be injected.");
@@ -168,18 +190,39 @@ public class Context<T> {
         	throw new RuntimeException("Cannot inject Class " + c.getName() + " is not annotated as 'Injectable' or it isn't abstract!");
 	    }
 	}
-	
+
+	private Object getOrCreateSetInstance(Class<?> c) throws ClassNotFoundException, IOException, URISyntaxException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
+	    if (c.isAnnotationPresent(Injectable.class) || Modifier.isAbstract(c.getModifiers())) {
+	    	if (c.isAnnotationPresent(Injectable.class) && Modifier.isAbstract(c.getModifiers())) {
+	    		throw new CannotInject("Class '" + c.getName() + "' is annotated with '@Injectable' but it is abstract and therefore cannot be injected.");
+	    	}
+			return createInjectableInstance(c);
+	    } else {
+        	throw new RuntimeException("Cannot inject Class " + c.getName() + " is not annotated as 'Injectable' or it isn't abstract!");
+	    }
+	}
+
+	private <X> X createInjectableInstance(Class<X> x) throws InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException, ClassNotFoundException, IOException, URISyntaxException {
+		Class<?> c = determineRelevantClass(x);
+		X instance = createInstance(c);
+		processFields(instance);
+		executePostConstructMethod(instance);
+		return instance;
+	}
+
 	private <X> X getOrCreateInjectable(Class<X> x) throws InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException, ClassNotFoundException, IOException, URISyntaxException {
 		Class<?> c = determineRelevantClass(x);
 		InstancesState scopedMap = getScopedInstancesState(scopeOf(c));
 		X instance;
 		if (scopedMap.instances.get(c) == null) {
+			System.out.println("Create instance of clazz " + c.getName() + " from scope " + scopeOf(c) + ".");
 			instance = createInstance(c);
 			scopedMap.instances.put(c, instance);
 			processFields(instance);
 			executePostConstructMethod(instance);
 		} else {
 			instance = (X) scopedMap.instances.get(c);
+			//System.out.println("Get instance of clazz " + c.getName() + " from scope " + scopeOf(c) + ".");
 		}
 		return instance;
 	}
@@ -193,17 +236,115 @@ public class Context<T> {
 			}
 			constructorInjection.add(c);
 			try {
-				Constructor<?> constructor = getConstructor(c);
-				instance = instanciateWith(constructor);
+				instance = (X) instanciateWith((Constructor<?>) getConstructor(c));
 			} catch (UnderConstruction cd) {
 				throw new CannotInject("Cycle in dependencies detected while performing constructor injection on " + c.getName(), cd);
 			} finally {
 				constructorInjection.remove(c);
 			}
+			
 			return instance;
 		}
 	}
 
+	private  Object proxy(Object object) {
+		
+		Class<?> clazz = object.getClass();
+		
+		java.lang.reflect.Constructor<?>[] constructors = clazz.getDeclaredConstructors();
+
+        if (constructors.length == 0) {
+            // No constructors defined, use default constructor if available
+            return createProxyWithDefaultConstructor(clazz, object);
+        } else if (constructors.length == 1) {
+            // One constructor is defined
+            return createProxyWithSingleConstructor(clazz, constructors[0], object);
+        } else {
+            // More than one constructor defined, which is not allowed
+            throw new CannotInject("Multiple constructors found in class: " + clazz.getName());
+        }
+	}
+
+	
+	private  Object proxy(Class<?> clazz) {
+		
+		java.lang.reflect.Constructor<?>[] constructors = clazz.getDeclaredConstructors();
+
+        if (constructors.length == 0) {
+            // No constructors defined, use default constructor if available
+            return createProxyWithDefaultConstructor(clazz);
+        } else if (constructors.length == 1) {
+            // One constructor is defined
+            return createProxyWithSingleConstructor(clazz, constructors[0]);
+        } else {
+            // More than one constructor defined, which is not allowed
+            throw new CannotInject("Multiple constructors found in class: " + clazz.getName());
+        }
+	}
+
+	
+	private <T> T createProxyWithDefaultConstructor(Class<T> clazz, Object object) {
+        // Create a proxy without specifying constructor arguments
+        Enhancer enhancer = new Enhancer();
+        enhancer.setSuperclass(clazz);
+        enhancer.setCallback((MethodInterceptor) (obj, method, args, proxy) -> {
+            return method.invoke(object, args);
+        });
+        return (T) enhancer.create();
+    }
+
+    private <T> T createProxyWithSingleConstructor(Class<T> clazz, java.lang.reflect.Constructor<?> constructor, Object object) {
+        // Create a proxy by specifying the single constructor
+        Enhancer enhancer = new Enhancer();
+        enhancer.setSuperclass(clazz);
+        enhancer.setCallback((MethodInterceptor) (obj, method, args, proxy) -> {
+            return method.invoke(object, args);
+        });
+        return (T) enhancer.create(constructor.getParameterTypes(), argsForConstructor(constructor));
+    }
+
+	
+	private <T> T createProxyWithDefaultConstructor(Class<T> clazz) {
+        // Create a proxy without specifying constructor arguments
+        Enhancer enhancer = new Enhancer();
+        enhancer.setSuperclass(clazz);
+        enhancer.setCallback((MethodInterceptor) (obj, method, args, proxy) -> {
+//    		InstancesState scopedMap = getScopedInstancesState(scopeOf(clazz));
+//    		Object object = scopedMap.instances.get(clazz);
+        	Object object = getOrCreate(clazz);
+            return method.invoke(object, args);
+        });
+        return (T) enhancer.create();
+    }
+
+    private <T> T createProxyWithSingleConstructor(Class<T> clazz, java.lang.reflect.Constructor<?> constructor) {
+        // Create a proxy by specifying the single constructor
+        Enhancer enhancer = new Enhancer();
+        enhancer.setSuperclass(clazz);
+        enhancer.setCallback((MethodInterceptor) (obj, method, args, proxy) -> {
+//    		InstancesState scopedMap = getScopedInstancesState(scopeOf(clazz));
+//    		Object object = scopedMap.instances.get(clazz);
+        	Object object = getOrCreate(clazz);
+            return method.invoke(object, args);
+        });
+        try {
+        	return (T) enhancer.create(constructor.getParameterTypes(), argsForConstructor(constructor));
+        } catch (java.lang.IllegalArgumentException e) {
+        	throw e;
+        }
+    }
+    
+    private Object[] argsForConstructor(java.lang.reflect.Constructor<?> constructor) {
+        // Logic to provide appropriate constructor arguments
+        // For example, you can provide default values or null for each parameter
+        int paramCount = constructor.getParameterCount();
+        Object[] args = new Object[paramCount];
+        for (int i = 0; i < paramCount; i++) {
+            args[i] = null; // Provide null as a default value; adjust as needed
+        }
+        return args;
+    }
+    
 	private void executePostConstructMethod(Object instance) throws IllegalAccessException, IllegalArgumentException, InvocationTargetException, ClassNotFoundException, InstantiationException, NoSuchMethodException, IOException, URISyntaxException {
 		
 		Set<Method> postConstructMethods = Arrays.asList(instance.getClass().getDeclaredMethods()).stream().filter(method -> method.isAnnotationPresent(PostConstruct.class)).collect(Collectors.toSet());
@@ -327,21 +468,30 @@ public class Context<T> {
 
 	
 	private InstancesState getScopedInstancesState(Scope scope) {
-		return scope.select(globalInstances, threadInstances, localInstances);
+		return scope.select(globalInstances, threadInstances);
 	}
 
 	private <X> Scope scopeOf(Class<X> c) {
 		return c.getAnnotation(Injectable.class).scope();
 	}
 
-	public <X> X getObject(Class<X> clazz) {
+	public <A> A getOrCreateObject(Class<A> clazz) {
 		try {
-			Class<?> c = determineRelevantClass(clazz);
-			InstancesState scopedMap = getScopedInstancesState(scopeOf(c));
-			return (X) scopedMap.instances.get(c);
-		} catch (ClassNotFoundException | IOException | URISyntaxException e) {
+			return (A) proxyIfNotExists(getOrCreate(clazz));
+		} catch (ClassNotFoundException | InstantiationException | IllegalAccessException | InvocationTargetException
+				| NoSuchMethodException | IllegalArgumentException | IOException | URISyntaxException e) {
 			throw new RuntimeException(e);
 		}
 	}
+
+//	public <X> X getObject(Class<X> clazz) {
+//		try {
+//			Class<?> c = determineRelevantClass(clazz);
+//			InstancesState scopedMap = getScopedInstancesState(scopeOf(c));
+//			return (X) scopedMap.instances.get(c);
+//		} catch (ClassNotFoundException | IOException | URISyntaxException e) {
+//			throw new RuntimeException(e);
+//		}
+//	}
 	
 }

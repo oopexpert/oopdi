@@ -12,8 +12,10 @@ import java.util.function.Supplier;
 public class OOPDI<T> {
 	
     private InstancesState globalInstances = new InstancesState();
+    private Map<Class<?>, Object> proxies = new HashMap<>();
+
     private Map<Thread, InstancesState> threadInstanceMaps = synchronizedMap(new HashMap<>());
-    
+
 	private Class<T> rootClazz;
 	private ContextExecution contextExecution;
 	
@@ -23,7 +25,7 @@ public class OOPDI<T> {
 	}
 
     Context<T> createContext(String... profiles) {
-    	return new Context<T>(this, rootClazz, globalInstances, getThreadInstancesMap(), profiles);
+    	return new Context<T>(this, rootClazz, globalInstances, getThreadInstancesMap(), proxies, profiles);
     }
 
 	private synchronized InstancesState getThreadInstancesMap() {
