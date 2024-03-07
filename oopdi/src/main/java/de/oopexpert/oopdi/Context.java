@@ -215,14 +215,12 @@ public class Context<T> {
 		InstancesState scopedMap = getScopedInstancesState(scopeOf(c));
 		X instance;
 		if (scopedMap.instances.get(c) == null) {
-			System.out.println("Create instance of clazz " + c.getName() + " from scope " + scopeOf(c) + ".");
 			instance = createInstance(c);
 			scopedMap.instances.put(c, instance);
 			processFields(instance);
 			executePostConstructMethod(instance);
 		} else {
 			instance = (X) scopedMap.instances.get(c);
-			//System.out.println("Get instance of clazz " + c.getName() + " from scope " + scopeOf(c) + ".");
 		}
 		return instance;
 	}
@@ -246,25 +244,6 @@ public class Context<T> {
 			return instance;
 		}
 	}
-
-	private  Object proxy(Object object) {
-		
-		Class<?> clazz = object.getClass();
-		
-		java.lang.reflect.Constructor<?>[] constructors = clazz.getDeclaredConstructors();
-
-        if (constructors.length == 0) {
-            // No constructors defined, use default constructor if available
-            return createProxyWithDefaultConstructor(clazz, object);
-        } else if (constructors.length == 1) {
-            // One constructor is defined
-            return createProxyWithSingleConstructor(clazz, constructors[0], object);
-        } else {
-            // More than one constructor defined, which is not allowed
-            throw new CannotInject("Multiple constructors found in class: " + clazz.getName());
-        }
-	}
-
 	
 	private  Object proxy(Class<?> clazz) {
 		
@@ -283,64 +262,29 @@ public class Context<T> {
 	}
 
 	
-	private <T> T createProxyWithDefaultConstructor(Class<T> clazz, Object object) {
-        // Create a proxy without specifying constructor arguments
-        Enhancer enhancer = new Enhancer();
-        enhancer.setSuperclass(clazz);
-        enhancer.setCallback((MethodInterceptor) (obj, method, args, proxy) -> {
-            return method.invoke(object, args);
-        });
-        return (T) enhancer.create();
-    }
-
-    private <T> T createProxyWithSingleConstructor(Class<T> clazz, java.lang.reflect.Constructor<?> constructor, Object object) {
-        // Create a proxy by specifying the single constructor
-        Enhancer enhancer = new Enhancer();
-        enhancer.setSuperclass(clazz);
-        enhancer.setCallback((MethodInterceptor) (obj, method, args, proxy) -> {
-            return method.invoke(object, args);
-        });
-        return (T) enhancer.create(constructor.getParameterTypes(), argsForConstructor(constructor));
-    }
-
-	
 	private <T> T createProxyWithDefaultConstructor(Class<T> clazz) {
-        // Create a proxy without specifying constructor arguments
-        Enhancer enhancer = new Enhancer();
+        return (T) createEnhancer(clazz).create();
+    }
+
+	private <T> Enhancer createEnhancer(Class<T> clazz) {
+		Enhancer enhancer = new Enhancer();
         enhancer.setSuperclass(clazz);
         enhancer.setCallback((MethodInterceptor) (obj, method, args, proxy) -> {
-//    		InstancesState scopedMap = getScopedInstancesState(scopeOf(clazz));
-//    		Object object = scopedMap.instances.get(clazz);
         	Object object = getOrCreate(clazz);
             return method.invoke(object, args);
         });
-        return (T) enhancer.create();
-    }
+		return enhancer;
+	}
 
     private <T> T createProxyWithSingleConstructor(Class<T> clazz, java.lang.reflect.Constructor<?> constructor) {
-        // Create a proxy by specifying the single constructor
-        Enhancer enhancer = new Enhancer();
-        enhancer.setSuperclass(clazz);
-        enhancer.setCallback((MethodInterceptor) (obj, method, args, proxy) -> {
-//    		InstancesState scopedMap = getScopedInstancesState(scopeOf(clazz));
-//    		Object object = scopedMap.instances.get(clazz);
-        	Object object = getOrCreate(clazz);
-            return method.invoke(object, args);
-        });
-        try {
-        	return (T) enhancer.create(constructor.getParameterTypes(), argsForConstructor(constructor));
-        } catch (java.lang.IllegalArgumentException e) {
-        	throw e;
-        }
+       	return (T) createEnhancer(clazz).create(constructor.getParameterTypes(), argsForConstructor(constructor));
     }
     
     private Object[] argsForConstructor(java.lang.reflect.Constructor<?> constructor) {
-        // Logic to provide appropriate constructor arguments
-        // For example, you can provide default values or null for each parameter
         int paramCount = constructor.getParameterCount();
         Object[] args = new Object[paramCount];
         for (int i = 0; i < paramCount; i++) {
-            args[i] = null; // Provide null as a default value; adjust as needed
+            args[i] = null;
         }
         return args;
     }
@@ -363,10 +307,7 @@ public class Context<T> {
 	}
 
 	private <X> X instanciateWith(Constructor<?> constructor) throws InstantiationException, IllegalAccessException, InvocationTargetException, ClassNotFoundException, IOException, URISyntaxException, NoSuchMethodException {
-		X instance;
-		Class<?>[] parameterTypes = constructor.getParameterTypes();
-		instance = (X) constructor.newInstance(getOrCreateParametersBy(parameterTypes));
-		return instance;
+		return (X) constructor.newInstance(getOrCreateParametersBy(constructor.getParameterTypes()));
 	}
 
 	private Object[] getOrCreateParametersBy(Class<?>[] parameterTypes) throws ClassNotFoundException, IOException, URISyntaxException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException {
@@ -483,15 +424,5 @@ public class Context<T> {
 			throw new RuntimeException(e);
 		}
 	}
-
-//	public <X> X getObject(Class<X> clazz) {
-//		try {
-//			Class<?> c = determineRelevantClass(clazz);
-//			InstancesState scopedMap = getScopedInstancesState(scopeOf(c));
-//			return (X) scopedMap.instances.get(c);
-//		} catch (ClassNotFoundException | IOException | URISyntaxException e) {
-//			throw new RuntimeException(e);
-//		}
-//	}
 	
 }
