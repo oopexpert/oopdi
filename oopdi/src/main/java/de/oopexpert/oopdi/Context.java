@@ -1,6 +1,5 @@
 package de.oopexpert.oopdi;
 
-import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -10,14 +9,11 @@ import java.lang.reflect.Modifier;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 import java.util.stream.Collectors;
 
 import de.oopexpert.oopdi.exception.CannotInject;
@@ -29,15 +25,16 @@ import net.sf.cglib.proxy.MethodInterceptor;
 
 public class Context<T> {
 	
-    private Map<Class<?>, Set<Class<?>>> componentSets  = new HashMap<>();
+	private Map<Class<?>, Set<Class<?>>> componentSets  = new HashMap<>();
     
     private InstancesState globalInstances;
     private InstancesState threadInstances;
 	private Map<Class<?>, Object> proxies;
 
-
 	private String[] profiles;
 	private OOPDI<T> oopdi;
+	
+	private DerivedClassesResolver derivedClassesResolver = new DerivedClassesResolver();
 
 	public Context(OOPDI<T> oopdi, Class<T> rootClazz, InstancesState globalInstances, InstancesState threadInstances, Map<Class<?>, Object> proxies, String[] profiles) {
 		this.oopdi = oopdi;
@@ -112,67 +109,11 @@ public class Context<T> {
 		
 	}
 	
-	private Set<Class<?>> getDerivedClasses(Class<?> parentClass, String packageName) throws ClassNotFoundException, IOException, URISyntaxException {
-	    Set<Class<?>> classes = new HashSet<>();
-	    String path = getPath(packageName);
-	    String[] classpathEntries = System.getProperty("java.class.path").split(File.pathSeparator);
-	    for (String classpathEntry : classpathEntries) {
-	        if (classpathEntry.endsWith(".jar")) {
-	            try (JarFile jarFile = new JarFile(classpathEntry)) {
-	                Enumeration<JarEntry> entries = jarFile.entries();
-	                while (entries.hasMoreElements()) {
-	                    JarEntry entry = entries.nextElement();
-	                    String name = entry.getName();
-	                    if (name.endsWith(".class") && name.startsWith(path)) {
-	                        String className = name.substring(0, name.length() - ".class".length()).replace("/", ".");
-	                        Class<?> clazz = Class.forName(className);
-	                        if (parentClass.isAssignableFrom(clazz)) {
-	                            classes.add(clazz);
-	                        }
-	                    }
-	                }
-	            }
-	        } else {
-	            File directory = new File(classpathEntry, packageName.replace(".", "/"));
-	            if (directory.exists()) {
-	                classes.addAll(getDerivedClassesFromDirectory(parentClass, packageName, directory));
-	            }
-	        }
-	    }
-	    return classes;
-	}
-
-	private String getPath(String packageName) {
-		return packageName.replace('.', '/');
-	}
-
-	private Set<Class<?>> getDerivedClassesFromDirectory(Class<?> parentClass, String packageName, File directory) throws ClassNotFoundException, IOException, URISyntaxException {
-        Set<Class<?>> classes = new HashSet<>();
-		for (File file : directory.listFiles()) {
-			classes.addAll(getDerivedClassesFromFile(parentClass, packageName, file));
-		}
-		return classes;
-	}
-
-	private Set<Class<?>> getDerivedClassesFromFile(Class<?> parentClass, String packageName, File file) throws ClassNotFoundException, IOException, URISyntaxException {
-        Set<Class<?>> classes = new HashSet<>();
-		if (file.isDirectory()) {
-		    classes.addAll(getDerivedClasses(parentClass, packageName + '.' + file.getName()));
-		} else if (file.getName().endsWith(".class")) {
-		    String className = packageName + '.' + file.getName().substring(0, file.getName().length() - 6);
-		    Class<?> clazz = Class.forName(className);
-		    if (parentClass.isAssignableFrom(clazz) && !parentClass.equals(clazz)) {
-		        classes.add(clazz);
-		    }
-		}
-		return classes;
-	}
-
 	private void registerComponents(Class<?> clazz) throws ClassNotFoundException, IOException, URISyntaxException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
 		if (!this.componentSets.containsKey(clazz)) {
 			Set<Class<?>> componentClasses = new HashSet<>();
 			this.componentSets.put(clazz, componentClasses);
-			Set<Class<?>> classes = nonAbstractClasses(withProfiles(getDerivedClasses(clazz, clazz.getPackageName())));
+			Set<Class<?>> classes = nonAbstractClasses(withProfiles(derivedClassesResolver.getDerivedClasses(clazz, clazz.getPackageName())));
 			for (Class<?> c : classes) {
 				componentClasses.add(c);
 			}
@@ -335,7 +276,7 @@ public class Context<T> {
 	}
 
 	private Class<?> determineRelevantClass(Class<?> c) throws ClassNotFoundException, IOException, URISyntaxException {
-		Set<Class<?>> derivedClasses = getDerivedClasses(c, c.getPackageName());
+		Set<Class<?>> derivedClasses = derivedClassesResolver.getDerivedClasses(c, c.getPackageName());
 		
 		Set<Class<?>> allClasses = new HashSet<>();
 		allClasses.addAll(derivedClasses);
