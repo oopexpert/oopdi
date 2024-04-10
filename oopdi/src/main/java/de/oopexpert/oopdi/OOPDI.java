@@ -13,6 +13,7 @@ public class OOPDI<T> {
 	
     private InstancesState globalInstances = new InstancesState();
     private Map<Class<?>, Object> proxies = new HashMap<>();
+    private Map<Class<?>, Class<?>> proxyClasses = new HashMap<>();
 
     private Map<Thread, InstancesState> threadInstanceMaps = synchronizedMap(new HashMap<>());
 
@@ -25,7 +26,7 @@ public class OOPDI<T> {
 	}
 
     Context<T> createContext(String... profiles) {
-    	return new Context<T>(this, rootClazz, globalInstances, getThreadInstancesMap(), proxies, profiles);
+    	return new Context<T>(this, rootClazz, globalInstances, getThreadInstancesMap(), proxies, profiles, proxyClasses);
     }
 
 	private synchronized InstancesState getThreadInstancesMap() {

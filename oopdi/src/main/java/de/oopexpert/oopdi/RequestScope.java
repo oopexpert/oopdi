@@ -50,7 +50,7 @@ public abstract class RequestScope {
 	}
 	
 
-	public static  <RESULT, OPERATION extends Function<PARAMETER, RESULT>, PARAMETER> RESULT executeFunction(Class<?> clazz, OOPDI<?> oopdi, Function<Context<?>, OPERATION> prepareOperation, PARAMETER parameter) {
+	public static  <RESULT, OPERATION extends Function<PARAMETER, RESULT>, PARAMETER> RESULT executeFunction(OOPDI<?> oopdi, Function<Context<?>, OPERATION> prepareOperation, PARAMETER parameter) {
 		return new FunctionRequest<PARAMETER, RESULT, OPERATION>() {
 
 
@@ -73,7 +73,7 @@ public abstract class RequestScope {
 		
 	}
 
-	public static <RESULT, OPERATION extends Supplier<RESULT>> RESULT executeSupplier(Class<?> clazz, OOPDI<?> oopdi, Function<Context<?>, OPERATION> prepareOperation) {
+	public static <RESULT, OPERATION extends Supplier<RESULT>> RESULT executeSupplier(OOPDI<?> oopdi, Function<Context<?>, OPERATION> prepareOperation) {
 		
 		return new SupplierRequest<RESULT, OPERATION>() {
 			
@@ -97,7 +97,7 @@ public abstract class RequestScope {
 
 	}
 
-	public static <PARAMETER, OPERATION extends Consumer<PARAMETER>> void executeConsumer(Class<?> clazz, OOPDI<?> oopdi, Function<Context<?>, OPERATION> prepareOperation, PARAMETER parameter) {
+	public static <PARAMETER, OPERATION extends Consumer<PARAMETER>> void executeConsumer(OOPDI<?> oopdi, Function<Context<?>, OPERATION> prepareOperation, PARAMETER parameter) {
 		
 		new ConsumerRequest<PARAMETER, OPERATION>() {
 			
@@ -120,7 +120,7 @@ public abstract class RequestScope {
 
 	}
 
-	public static <OPERATION extends Runnable> void executeRunnable(Class<?> clazz, OOPDI<?> oopdi, Function<Context<?>, OPERATION> prepareOperation) {
+	public static <OPERATION extends Runnable> void executeRunnable(OOPDI<?> oopdi, Function<Context<?>, OPERATION> prepareOperation) {
 		new RunnableRequest<OPERATION>() {
 			@Override
 			protected void exec(Function<Context<?>, OPERATION> prepareOperation) {

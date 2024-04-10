@@ -29,18 +29,21 @@ public class Context<T> {
     
     private InstancesState globalInstances;
     private InstancesState threadInstances;
-	private Map<Class<?>, Object> proxies;
+	private Map<Class<?>, Object> proxiedObjectsByClass;
 
 	private String[] profiles;
 	private OOPDI<T> oopdi;
 	
 	private DerivedClassesResolver derivedClassesResolver = new DerivedClassesResolver();
 
-	public Context(OOPDI<T> oopdi, Class<T> rootClazz, InstancesState globalInstances, InstancesState threadInstances, Map<Class<?>, Object> proxies, String[] profiles) {
+	private Map<Class<?>, Class<?>> proxyClasses;
+
+	public Context(OOPDI<T> oopdi, Class<T> rootClazz, InstancesState globalInstances, InstancesState threadInstances, Map<Class<?>, Object> proxies, String[] profiles, Map<Class<?>, Class<?>> proxyClasses) {
 		this.oopdi = oopdi;
 		this.globalInstances = globalInstances;
 		this.threadInstances = threadInstances;
-		this.proxies = proxies;
+		this.proxiedObjectsByClass = proxies;
+		this.proxyClasses = proxyClasses;
 		this.profiles = profiles;
 		try {
 			this.getOrCreate(rootClazz);
@@ -52,21 +55,29 @@ public class Context<T> {
 		}
 	}
 
-	private Object processFields(Object instance) throws IllegalArgumentException, IllegalAccessException, ClassNotFoundException, IOException, URISyntaxException, InstantiationException, InvocationTargetException, NoSuchMethodException {
-        for (Field field : instance.getClass().getDeclaredFields()) {
-		    field.setAccessible(true);
-        	if (field.get(instance) == null) {
-	            if (field.isAnnotationPresent(InjectInstance.class)) {
-	        		inject(instance, field);
-	            } else if (field.isAnnotationPresent(InjectSet.class)) {
-	            	injectSet(instance, field);
-	            }
-        	}
+	Object processFields(Object instance) throws IllegalArgumentException, IllegalAccessException, ClassNotFoundException, IOException, URISyntaxException, InstantiationException, InvocationTargetException, NoSuchMethodException {
+        for (Field field : getDeclaredFields(instance)) {
+		    processField(instance, field);
         }
         return instance;
     }
 
-	private void injectSet(Object instance, Field field) throws IllegalAccessException, ClassNotFoundException, IOException, URISyntaxException, InstantiationException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
+	private Field[] getDeclaredFields(Object instance) {
+		return instance.getClass().getDeclaredFields();
+	}
+
+	void processField(Object instance, Field field) throws IllegalAccessException, ClassNotFoundException, InstantiationException, InvocationTargetException, NoSuchMethodException, IOException, URISyntaxException {
+		field.setAccessible(true);
+		if (field.get(instance) == null) {
+		    if (field.isAnnotationPresent(InjectInstance.class)) {
+				inject(instance, field);
+		    } else if (field.isAnnotationPresent(InjectSet.class)) {
+		    	injectSet(instance, field);
+		    }
+		}
+	}
+
+	void injectSet(Object instance, Field field) throws IllegalAccessException, ClassNotFoundException, IOException, URISyntaxException, InstantiationException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
 		InjectSet annotation = field.getAnnotation(InjectSet.class);
 		if (componentSets.get(annotation.hint()) == null) {
 			registerComponents(annotation.hint());
@@ -87,7 +98,7 @@ public class Context<T> {
 		return components;
 	}
 
-	private void inject(Object instance, Field field) throws IllegalArgumentException, IllegalAccessException, ClassNotFoundException, InstantiationException, InvocationTargetException, NoSuchMethodException, IOException, URISyntaxException {
+	void inject(Object instance, Field field) throws IllegalArgumentException, IllegalAccessException, ClassNotFoundException, InstantiationException, InvocationTargetException, NoSuchMethodException, IOException, URISyntaxException {
 		try {
 			proxyIfNotExists(instance);
 			field.set(instance, proxyIfNotExists(getOrCreate(field.getType())));
@@ -98,14 +109,14 @@ public class Context<T> {
 	}
 
 	private <B> B proxyIfNotExists(B instance) {
-		if (!proxies.containsKey(instance.getClass())) {
-			proxies.put(instance.getClass(), proxy(instance.getClass()));
-	    	//System.out.println("Create Proxy for class " + instance.getClass().getName());
-			return (B) proxies.get(instance.getClass());
-		} else {
-	    	//System.out.println("Get Proxy for class " + instance.getClass().getName());
-			return (B) proxies.get(instance.getClass());
+		Class<?> nonProxyClass = proxyClasses.get(instance.getClass());
+		if (nonProxyClass == null) {
+			nonProxyClass = instance.getClass();
 		}
+		if (!proxiedObjectsByClass.containsKey(nonProxyClass)) {
+			proxiedObjectsByClass.put(nonProxyClass, proxy(nonProxyClass));
+		}
+		return (B) proxiedObjectsByClass.get(nonProxyClass);
 		
 	}
 	
@@ -113,7 +124,7 @@ public class Context<T> {
 		if (!this.componentSets.containsKey(clazz)) {
 			Set<Class<?>> componentClasses = new HashSet<>();
 			this.componentSets.put(clazz, componentClasses);
-			Set<Class<?>> classes = nonAbstractClasses(withProfiles(derivedClassesResolver.getDerivedClasses(clazz, clazz.getPackageName())));
+			Set<Class<?>> classes = nonAbstractClasses(withProfiles(injectables(derivedClassesResolver.getDerivedClasses(clazz, clazz.getPackageName()))));
 			for (Class<?> c : classes) {
 				componentClasses.add(c);
 			}
@@ -192,10 +203,14 @@ public class Context<T> {
 
         if (constructors.length == 0) {
             // No constructors defined, use default constructor if available
-            return createProxyWithDefaultConstructor(clazz);
+            Object proxiedObject = createProxyWithDefaultConstructor(clazz);
+            proxyClasses.put(proxiedObject.getClass(), clazz);
+			return proxiedObject;
         } else if (constructors.length == 1) {
             // One constructor is defined
-            return createProxyWithSingleConstructor(clazz, constructors[0]);
+            Object proxiedObject = createProxyWithSingleConstructor(clazz, constructors[0]);
+            proxyClasses.put(proxiedObject.getClass(), clazz);
+			return proxiedObject;
         } else {
             // More than one constructor defined, which is not allowed
             throw new CannotInject("Multiple constructors found in class: " + clazz.getName());
@@ -359,7 +374,11 @@ public class Context<T> {
 
 	public <A> A getOrCreateObject(Class<A> clazz) {
 		try {
-			return (A) proxyIfNotExists(getOrCreate(clazz));
+			Class<A> nonProxyClass = (Class<A>) proxyClasses.get(clazz);
+			if (nonProxyClass == null) {
+				nonProxyClass = clazz;
+			}
+			return (A) proxyIfNotExists(getOrCreate(nonProxyClass));
 		} catch (ClassNotFoundException | InstantiationException | IllegalAccessException | InvocationTargetException
 				| NoSuchMethodException | IllegalArgumentException | IOException | URISyntaxException e) {
 			throw new RuntimeException(e);

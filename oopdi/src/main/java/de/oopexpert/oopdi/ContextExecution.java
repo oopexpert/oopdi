@@ -18,7 +18,7 @@ public class ContextExecution {
 	}
 	
 	public <T, X,Y> Y execFunction(Class<T> clazz, Function<T, Function<X,Y>> f, X x) {
-		return executeFunction(clazz, oopdi, getFunctionWithContext(clazz, f), x);
+		return executeFunction(oopdi, getFunctionWithContext(clazz, f), x);
 	}
 
 	private <T, X, Y> Function<Context<?>, Function<X, Y>> getFunctionWithContext(Class<T> clazz, Function<T, Function<X, Y>> f) {
@@ -27,7 +27,7 @@ public class ContextExecution {
 	
 	
 	public <T, Y> Y execSupplier(Class<T> clazz, Function<T, Supplier<Y>> f) {
-		return executeSupplier(clazz, oopdi, getSupplierWithContext(clazz, f));
+		return executeSupplier(oopdi, getSupplierWithContext(clazz, f));
 	}
 
 	private <T, Y> Function<Context<?>, Supplier<Y>> getSupplierWithContext(Class<T> clazz, Function<T, Supplier<Y>> f) {
@@ -36,7 +36,7 @@ public class ContextExecution {
 	
 	
 	public <T, X> void execConsumer(Class<T> clazz, Function<T, Consumer<X>> f, X x) {
-		executeConsumer(clazz, oopdi, getConsumerWithContext(clazz, f), x);
+		executeConsumer(oopdi, getConsumerWithContext(clazz, f), x);
 	}
 	
 	private <T, X> Function<Context<?>, Consumer<X>> getConsumerWithContext(Class<T> clazz, Function<T, Consumer<X>> f) {
@@ -44,7 +44,7 @@ public class ContextExecution {
 	}
 
 	public <T> void execRunnable(Class<T> clazz, Function<T, Runnable> f) {
-		executeRunnable(clazz, oopdi, getRunnableWithContext(clazz, f));
+		executeRunnable(oopdi, getRunnableWithContext(clazz, f));
 	}
 
 	private <T> Function<Context<?>, Runnable> getRunnableWithContext(Class<T> clazz, Function<T, Runnable> f) {
