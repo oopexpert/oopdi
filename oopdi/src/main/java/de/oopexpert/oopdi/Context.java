@@ -46,8 +46,8 @@ public class Context<T> {
 		this.proxyClasses = proxyClasses;
 		this.profiles = profiles;
 		try {
-			this.getOrCreate(rootClazz);
-			proxies.put(rootClazz, proxy(rootClazz));
+			T rootObject = this.getOrCreate(rootClazz);
+			proxies.put(rootClazz, proxyIfNotExists(rootObject));
 		} catch (ClassNotFoundException | InstantiationException | IllegalAccessException
 				| InvocationTargetException | NoSuchMethodException | IllegalArgumentException | IOException
 				| URISyntaxException e) {
@@ -198,6 +198,8 @@ public class Context<T> {
 	}
 	
 	private  Object proxy(Class<?> clazz) {
+		
+		System.out.println("Create proxy of " + clazz.getName() + ".");
 		
 		java.lang.reflect.Constructor<?>[] constructors = clazz.getDeclaredConstructors();
 
