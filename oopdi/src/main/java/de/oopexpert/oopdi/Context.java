@@ -55,7 +55,7 @@ public class Context<T> {
 		}
 	}
 
-	Object processFields(Object instance) throws IllegalArgumentException, IllegalAccessException, ClassNotFoundException, IOException, URISyntaxException, InstantiationException, InvocationTargetException, NoSuchMethodException {
+	private Object processFields(Object instance) throws IllegalArgumentException, IllegalAccessException, ClassNotFoundException, IOException, URISyntaxException, InstantiationException, InvocationTargetException, NoSuchMethodException {
         for (Field field : getDeclaredFields(instance)) {
 		    processField(instance, field);
         }
@@ -66,7 +66,7 @@ public class Context<T> {
 		return instance.getClass().getDeclaredFields();
 	}
 
-	void processField(Object instance, Field field) throws IllegalAccessException, ClassNotFoundException, InstantiationException, InvocationTargetException, NoSuchMethodException, IOException, URISyntaxException {
+	private void processField(Object instance, Field field) throws IllegalAccessException, ClassNotFoundException, InstantiationException, InvocationTargetException, NoSuchMethodException, IOException, URISyntaxException {
 		field.setAccessible(true);
 		if (field.get(instance) == null) {
 		    if (field.isAnnotationPresent(InjectInstance.class)) {
@@ -77,7 +77,7 @@ public class Context<T> {
 		}
 	}
 
-	void injectSet(Object instance, Field field) throws IllegalAccessException, ClassNotFoundException, IOException, URISyntaxException, InstantiationException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
+	private void injectSet(Object instance, Field field) throws IllegalAccessException, ClassNotFoundException, IOException, URISyntaxException, InstantiationException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
 		InjectSet annotation = field.getAnnotation(InjectSet.class);
 		if (componentSets.get(annotation.hint()) == null) {
 			registerComponents(annotation.hint());
@@ -87,14 +87,14 @@ public class Context<T> {
 	}
 
 	private Set<Object> getOrCreateInstances(Class<?> hint) throws ClassNotFoundException, IOException, URISyntaxException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException {
+		
 		Set<Object> components = new HashSet<>();
 		
 		for (Class<?> clazz : componentSets.get(hint)) {
-			
 			Object object = getOrCreateSetInstance(clazz);
-			
 			components.add(proxyIfNotExists(object));
 		}
+		
 		return components;
 	}
 
@@ -132,7 +132,7 @@ public class Context<T> {
 	}
 
 
-	public <A> A getOrCreate(Class<A> c) throws ClassNotFoundException, IOException, URISyntaxException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
+	private <A> A getOrCreate(Class<A> c) throws ClassNotFoundException, IOException, URISyntaxException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
 	    if (c.isAnnotationPresent(Injectable.class) || Modifier.isAbstract(c.getModifiers())) {
 	    	if (c.isAnnotationPresent(Injectable.class) && Modifier.isAbstract(c.getModifiers())) {
 	    		throw new CannotInject("Class '" + c.getName() + "' is annotated with '@Injectable' but it is abstract and therefore cannot be injected.");
@@ -353,18 +353,21 @@ public class Context<T> {
 	}
 
 	private Set<Class<?>> filterClassesByProfileMatch(Class<?> derivedClass, String[] derivedClassProfiles) {
-		Set<Class<?>> filteredClasses = new HashSet<>();
-		for (String profile : this.profiles) {
-			for (String derivedClassProfile : derivedClassProfiles) {
-				if (profile.equals(derivedClassProfile)) {
-					filteredClasses.add(derivedClass);
-					break;
-				}
-			}
-		}
-		return filteredClasses;
-	}
+		
+	    Set<Class<?>> filteredClasses = new HashSet<>();
+	    
+	    for (String activeProfile : this.profiles) {
+	        if (isProfileMatch(derivedClassProfiles, activeProfile)) {
+	            filteredClasses.add(derivedClass);
+	        }
+	    }
 
+	    return filteredClasses;
+	}
+	
+	private boolean isProfileMatch(String[] derivedClassProfiles, String activeProfile) {
+	    return Arrays.stream(derivedClassProfiles).anyMatch(derivedProfile -> derivedProfile.equals(activeProfile));
+	}
 	
 	private InstancesState getScopedInstancesState(Scope scope) {
 		return scope.select(globalInstances, threadInstances);
@@ -374,7 +377,7 @@ public class Context<T> {
 		return c.getAnnotation(Injectable.class).scope();
 	}
 
-	public <A> A getOrCreateObject(Class<A> clazz) {
+	public <A> A getOrCreateInstance(Class<A> clazz) {
 		try {
 			Class<A> nonProxyClass = (Class<A>) proxyClasses.get(clazz);
 			if (nonProxyClass == null) {
