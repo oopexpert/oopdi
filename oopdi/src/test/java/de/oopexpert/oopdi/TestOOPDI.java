@@ -15,8 +15,8 @@ class TestOOPDI {
 		
 		OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
 		
-		oopdi.execRunnable(ClassRoot.class, (r) -> r::executeRunnable);
-		oopdi.execRunnable(ClassRoot.class, (r) -> r::executeRunnable);
+		oopdi.execRunnable(ClassRoot.class, r -> r::executeRunnable);
+		oopdi.execRunnable(ClassRoot.class, r -> r::executeRunnable);
 		
 		Set<ClassB> classesB = oopdi.execSupplier(ClassRoot.class, r -> r::getClassesB);
 		

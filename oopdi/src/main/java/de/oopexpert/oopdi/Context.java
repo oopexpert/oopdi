@@ -9,7 +9,6 @@ import java.lang.reflect.Modifier;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -25,16 +24,13 @@ import net.sf.cglib.proxy.MethodInterceptor;
 
 public class Context<T> {
 	
-	private Map<Class<?>, Set<Class<?>>> componentSets  = new HashMap<>();
-    
     private InstancesState globalInstances;
     private InstancesState threadInstances;
 	private Map<Class<?>, Object> proxiedObjectsByClass;
 
-	private String[] profiles;
 	private OOPDI<T> oopdi;
 	
-	private DerivedClassesResolver derivedClassesResolver = new DerivedClassesResolver();
+	private ClassesResolver classesResolver;
 
 	private Map<Class<?>, Class<?>> proxyClasses;
 
@@ -44,7 +40,7 @@ public class Context<T> {
 		this.threadInstances = threadInstances;
 		this.proxiedObjectsByClass = proxies;
 		this.proxyClasses = proxyClasses;
-		this.profiles = profiles;
+		this.classesResolver = new ClassesResolver(profiles);
 		try {
 			T rootObject = this.getOrCreate(rootClazz);
 			proxies.put(rootClazz, proxyIfNotExists(rootObject));
@@ -78,19 +74,14 @@ public class Context<T> {
 	}
 
 	private void injectSet(Object instance, Field field) throws IllegalAccessException, ClassNotFoundException, IOException, URISyntaxException, InstantiationException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
-		InjectSet annotation = field.getAnnotation(InjectSet.class);
-		if (componentSets.get(annotation.hint()) == null) {
-			registerComponents(annotation.hint());
-		}
-		
-		field.set(instance, getOrCreateInstances((Class<?>) annotation.hint()));
+		field.set(instance, getOrCreateInstances((Class<?>) field.getAnnotation(InjectSet.class).hint()));
 	}
 
 	private Set<Object> getOrCreateInstances(Class<?> hint) throws ClassNotFoundException, IOException, URISyntaxException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException {
 		
 		Set<Object> components = new HashSet<>();
 		
-		for (Class<?> clazz : componentSets.get(hint)) {
+		for (Class<?> clazz : classesResolver.getSet(hint)) {
 			Object object = getOrCreateSetInstance(clazz);
 			components.add(proxyIfNotExists(object));
 		}
@@ -120,18 +111,6 @@ public class Context<T> {
 		
 	}
 	
-	private void registerComponents(Class<?> clazz) throws ClassNotFoundException, IOException, URISyntaxException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
-		if (!this.componentSets.containsKey(clazz)) {
-			Set<Class<?>> componentClasses = new HashSet<>();
-			this.componentSets.put(clazz, componentClasses);
-			Set<Class<?>> classes = nonAbstractClasses(withProfiles(injectables(derivedClassesResolver.getDerivedClasses(clazz, clazz.getPackageName()))));
-			for (Class<?> c : classes) {
-				componentClasses.add(c);
-			}
-		}
-	}
-
-
 	private <A> A getOrCreate(Class<A> c) throws ClassNotFoundException, IOException, URISyntaxException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
 	    if (c.isAnnotationPresent(Injectable.class) || Modifier.isAbstract(c.getModifiers())) {
 	    	if (c.isAnnotationPresent(Injectable.class) && Modifier.isAbstract(c.getModifiers())) {
@@ -155,7 +134,7 @@ public class Context<T> {
 	}
 
 	private <X> X createInjectableInstance(Class<X> x) throws InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException, ClassNotFoundException, IOException, URISyntaxException {
-		Class<?> c = determineRelevantClass(x);
+		Class<?> c = classesResolver.determineRelevantClass(x);
 		X instance = createInstance(c);
 		processFields(instance);
 		executePostConstructMethod(instance);
@@ -163,7 +142,7 @@ public class Context<T> {
 	}
 
 	private <X> X getOrCreateInjectable(Class<X> x) throws InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException, ClassNotFoundException, IOException, URISyntaxException {
-		Class<?> c = determineRelevantClass(x);
+		Class<?> c = classesResolver.determineRelevantClass(x);
 		InstancesState scopedMap = getScopedInstancesState(scopeOf(c));
 		X instance;
 		if (scopedMap.instances.get(c) == null) {
@@ -292,83 +271,6 @@ public class Context<T> {
 		return constructor;
 	}
 
-	private Class<?> determineRelevantClass(Class<?> c) throws ClassNotFoundException, IOException, URISyntaxException {
-		Set<Class<?>> derivedClasses = derivedClassesResolver.getDerivedClasses(c, c.getPackageName());
-		
-		Set<Class<?>> allClasses = new HashSet<>();
-		allClasses.addAll(derivedClasses);
-		allClasses.add(c);
-		
-		Set<Class<?>> filteredClasses = nonAbstractClasses(withProfiles(injectables(allClasses)));
-		
-		if (filteredClasses.isEmpty()) {
-			throw new NoClassesLeftAfterFiltering("No classes left after profile/non-abstract filtering (" + c.getName() + ").");
-		}
-		
-		if (filteredClasses.size() > 1) {
-			throw new MultipleClassesLeftAfterFiltering("Multiple concrete classes left after profile/non-abstract filtering class hierarchy of class '" + c.getName() + "'. Cannot decide object instantiation.");
-		}
-		
-		return filteredClasses.iterator().next();
-	}
-
-	private Set<Class<?>> injectables(Set<Class<?>> classes) {
-		Set<Class<?>> filteredClasses = new HashSet<>();
-		for (Class<?> clazz : classes) {
-			if (clazz.isAnnotationPresent(Injectable.class)) {
-				filteredClasses.add(clazz);
-			}
-		}
-		return filteredClasses;
-	}
-
-	private Set<Class<?>> nonAbstractClasses(Set<Class<?>> classes) {
-		Set<Class<?>> filteredClasses = new HashSet<>();
-		for (Class<?> clazz : classes) {
-			if (!Modifier.isAbstract(clazz.getModifiers())) {
-				filteredClasses.add(clazz);
-			}
-		}
-		return filteredClasses;
-	}
-
-	private <X> Set<Class<?>> withProfiles(Set<Class<?>> classes) {
-		Set<Class<?>> filteredClasses = new HashSet<>();
-		for (Class<?> derivedClass : classes) {
-			filteredClasses.addAll(filterClassesByInjectableProfile(derivedClass));
-		}
-		return filteredClasses;
-	}
-
-	private Set<Class<?>> filterClassesByInjectableProfile(Class<?> derivedClass) {
-		Set<Class<?>> filteredClasses = new HashSet<>();
-		Injectable injectable = derivedClass.getAnnotation(Injectable.class);
-		String[] derivedClassProfiles = injectable.profiles();
-		if (derivedClassProfiles.length == 0) {
-			filteredClasses.add(derivedClass);
-		} else {
-			filteredClasses.addAll(filterClassesByProfileMatch(derivedClass, derivedClassProfiles));
-		}
-		return filteredClasses;
-	}
-
-	private Set<Class<?>> filterClassesByProfileMatch(Class<?> derivedClass, String[] derivedClassProfiles) {
-		
-	    Set<Class<?>> filteredClasses = new HashSet<>();
-	    
-	    for (String activeProfile : this.profiles) {
-	        if (isProfileMatch(derivedClassProfiles, activeProfile)) {
-	            filteredClasses.add(derivedClass);
-	        }
-	    }
-
-	    return filteredClasses;
-	}
-	
-	private boolean isProfileMatch(String[] derivedClassProfiles, String activeProfile) {
-	    return Arrays.stream(derivedClassProfiles).anyMatch(derivedProfile -> derivedProfile.equals(activeProfile));
-	}
-	
 	private InstancesState getScopedInstancesState(Scope scope) {
 		return scope.select(globalInstances, threadInstances);
 	}

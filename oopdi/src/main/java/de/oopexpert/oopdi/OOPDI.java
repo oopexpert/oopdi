@@ -19,13 +19,15 @@ public class OOPDI<T> {
 
 	private Class<T> rootClazz;
 	private ContextExecution contextExecution;
+	private String[] profiles;
 	
-    public OOPDI(Class<T> rootClazz) {
+    public OOPDI(Class<T> rootClazz, String... profiles) {
+    	this.profiles = profiles;
     	this.rootClazz = rootClazz;
     	this.contextExecution = new ContextExecution(this);
 	}
 
-    Context<T> createContext(String... profiles) {
+    Context<T> createContext() {
     	return new Context<T>(this, rootClazz, globalInstances, getThreadInstancesMap(), proxies, profiles, proxyClasses);
     }
 
