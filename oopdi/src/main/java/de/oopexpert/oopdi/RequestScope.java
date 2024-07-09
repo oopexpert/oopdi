@@ -146,22 +146,13 @@ public abstract class RequestScope {
 		}
 	}
 
-	public static Object getRequestScopeInstance(Class<?> clazz) {
-		return getRequestScopedInstances().instances.get(clazz);
-	}
-
-	public static InstancesState getRequestScopedInstances() {
+	private static InstancesState getRequestScopedInstances() {
 		List<InstancesState> list = requestInstanceMaps.get(Thread.currentThread());
 		if (list == null) {
 			throw new NoRequestScopeAvailable();
 		}
 		return list.get(0);
 	}
-
-	public static  <T> void getRequestScopeInstance(Class<T> clazz, T t) {
-		getRequestScopedInstances().instances.put(clazz, t);
-	}
-
 
 	public static InstancesState getRequestInstances() {
 		return getRequestScopedInstances();

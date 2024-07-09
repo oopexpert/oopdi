@@ -1,44 +1,28 @@
 package de.oopexpert.oopdi;
 
-import static java.lang.Thread.currentThread;
-import static java.util.Collections.synchronizedMap;
-
-import java.util.HashMap;
-import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class OOPDI<T> {
+
+	private ScopedInstances scopedInstances;
 	
-    private InstancesState globalInstances = new InstancesState();
-    private Map<Class<?>, Object> proxies = new HashMap<>();
-    private Map<Class<?>, Class<?>> proxyClasses = new HashMap<>();
-
-    private Map<Thread, InstancesState> threadInstanceMaps = synchronizedMap(new HashMap<>());
-
 	private Class<T> rootClazz;
-	private ContextExecution contextExecution;
-	private String[] profiles;
+	private ContextExecution contextExecution = new ContextExecution(this);
+
+	private ProxyManager proxyManager = new ProxyManager();
+	private ClassesResolver classesResolver;
 	
     public OOPDI(Class<T> rootClazz, String... profiles) {
-    	this.profiles = profiles;
+    	this.scopedInstances = new ScopedInstances();
+    	this.classesResolver = new ClassesResolver(profiles);
     	this.rootClazz = rootClazz;
-    	this.contextExecution = new ContextExecution(this);
 	}
 
     Context<T> createContext() {
-    	return new Context<T>(this, rootClazz, globalInstances, getThreadInstancesMap(), proxies, profiles, proxyClasses);
+    	return new Context<T>(this, rootClazz, scopedInstances, proxyManager, classesResolver);
     }
-
-	private synchronized InstancesState getThreadInstancesMap() {
-		
-		if (threadInstanceMaps.get(currentThread()) == null) {
-			threadInstanceMaps.put(currentThread(), new InstancesState());
-		}
-		
-		return threadInstanceMaps.get(currentThread());
-	}
 
 	public <T1> void execRunnable(Class<T1> clazz, Function<T1, Runnable> f) {
 		contextExecution.execRunnable(clazz, f);

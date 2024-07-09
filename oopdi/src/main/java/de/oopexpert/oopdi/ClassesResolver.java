@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
+import de.oopexpert.oopdi.annotation.Injectable;
 import de.oopexpert.oopdi.exception.MultipleClassesLeftAfterFiltering;
 import de.oopexpert.oopdi.exception.NoClassesLeftAfterFiltering;
 
@@ -32,14 +33,14 @@ public class ClassesResolver {
     	this.componentSets = new HashMap<>();
     }
 
-	public Class<?> determineRelevantClass(Class<?> c) {
-		Set<Class<?>> derivedClasses = getDerivedClasses(c, c.getPackageName());
+	public <T> Class<T> determineRelevantClass(Class<T> c) {
+		Set<Class<T>> derivedClasses = getDerivedClasses(c, c.getPackageName());
 		
-		Set<Class<?>> allClasses = new HashSet<>();
+		Set<Class<T>> allClasses = new HashSet<>();
 		allClasses.addAll(derivedClasses);
 		allClasses.add(c);
 		
-		Set<Class<?>> filteredClasses = nonAbstractClasses(withProfiles(injectables(allClasses)));
+		Set<Class<T>> filteredClasses = nonAbstractClasses(withProfiles(injectables(allClasses)));
 		
 		if (filteredClasses.isEmpty()) {
 			throw new NoClassesLeftAfterFiltering("No classes left after profile/non-abstract filtering (" + c.getName() + ").");
@@ -52,9 +53,9 @@ public class ClassesResolver {
 		return filteredClasses.iterator().next();
 	}
 
-	private Set<Class<?>> getDerivedClasses(Class<?> parentClass, String packageName) {
+	private <T> Set<Class<T>> getDerivedClasses(Class<T> parentClass, String packageName) {
 	    
-		Set<Class<?>> classes = new HashSet<>();
+		Set<Class<T>> classes = new HashSet<>();
 	    
 	    for (String classpathEntry : getClassPathEntries()) {
 	        try {
@@ -67,8 +68,8 @@ public class ClassesResolver {
 	    return classes;
 	}
 
-	private Set<Class<?>> getDerivedClassesInPath(Class<?> parentClass, String packageName, String classpathEntry) throws ClassNotFoundException, IOException, URISyntaxException {
-		Set<Class<?>> classes = new HashSet<>();
+	private <T> Set<Class<T>> getDerivedClassesInPath(Class<T> parentClass, String packageName, String classpathEntry) throws ClassNotFoundException, IOException, URISyntaxException {
+		Set<Class<T>> classes = new HashSet<>();
 		if (classpathEntry.endsWith(SUFFIX_JAR)) {
 			classes.addAll(getDerivedClassesFromJar(parentClass, toPathName(packageName), classpathEntry));
 		} else {
@@ -84,12 +85,12 @@ public class ClassesResolver {
 		return System.getProperty("java.class.path").split(File.pathSeparator);
 	}
 
-	private Set<Class<?>> getDerivedClassesFromJar(Class<?> parentClass, String path, String classpathEntry) throws ClassNotFoundException, IOException {
-	    Set<Class<?>> classes = new HashSet<>();
+	private <T> Set<Class<T>> getDerivedClassesFromJar(Class<T> parentClass, String path, String classpathEntry) throws ClassNotFoundException, IOException {
+	    Set<Class<T>> classes = new HashSet<>();
 		try (JarFile jarFile = new JarFile(classpathEntry)) {
 		    Enumeration<JarEntry> entries = jarFile.entries();
 		    while (entries.hasMoreElements()) {
-		        Class<?> classInJarEntry = findAssignableClassInJarEntry(parentClass, path, entries.nextElement());
+		        Class<T> classInJarEntry = findAssignableClassInJarEntry(parentClass, path, entries.nextElement());
 		        if (classInJarEntry != null) {
 		        	classes.add(classInJarEntry);
 		        }
@@ -99,11 +100,11 @@ public class ClassesResolver {
 	}
 
 
-	private Class<?> findAssignableClassInJarEntry(Class<?> parentClass, String path, JarEntry jarEntry) throws ClassNotFoundException {
+	private <T> Class<T> findAssignableClassInJarEntry(Class<T> parentClass, String path, JarEntry jarEntry) throws ClassNotFoundException {
         String jarEntryName = jarEntry.getName();
 		if (jarEntryName.startsWith(path) && jarEntryName.endsWith(SUFFIX_CLASS)) {
 		    String className = toClassName(jarEntryName);
-		    Class<?> clazz = Class.forName(className);
+		    Class<T> clazz = (Class<T>) Class.forName(className);
 		    if (parentClass.isAssignableFrom(clazz)) {
 		        return clazz;
 		    }
@@ -119,21 +120,21 @@ public class ClassesResolver {
 		return packageName.replace(PACKAGE_SEPARATOR, PATH_SEPARATOR);
 	}
 
-	private Set<Class<?>> getDerivedClassesFromDirectory(Class<?> parentClass, String packageName, File directory) throws ClassNotFoundException, IOException, URISyntaxException {
-        Set<Class<?>> classes = new HashSet<>();
+	private <T> Set<Class<T>> getDerivedClassesFromDirectory(Class<T> parentClass, String packageName, File directory) throws ClassNotFoundException, IOException, URISyntaxException {
+        Set<Class<T>> classes = new HashSet<>();
 		for (File file : directory.listFiles()) {
 			classes.addAll(getDerivedClassesFromDirectoryOrFile(parentClass, packageName, file));
 		}
 		return classes;
 	}
 
-	private Set<Class<?>> getDerivedClassesFromDirectoryOrFile(Class<?> parentClass, String packageName, File file) throws ClassNotFoundException, IOException, URISyntaxException {
-        Set<Class<?>> classes = new HashSet<>();
+	private <T> Set<Class<T>> getDerivedClassesFromDirectoryOrFile(Class<T> parentClass, String packageName, File file) throws ClassNotFoundException, IOException, URISyntaxException {
+        Set<Class<T>> classes = new HashSet<>();
 		if (file.isDirectory()) {
 		    classes.addAll(getDerivedClasses(parentClass, packageName + PACKAGE_SEPARATOR + file.getName()));
 		} else if (file.getName().endsWith(SUFFIX_CLASS)) {
 		    String className = packageName + PACKAGE_SEPARATOR + file.getName().substring(0, file.getName().length() - SUFFIX_CLASS.length());
-		    Class<?> clazz = Class.forName(className);
+		    Class<T> clazz = (Class<T>) Class.forName(className);
 		    if (parentClass.isAssignableFrom(clazz) && !parentClass.equals(clazz)) {
 		        classes.add(clazz);
 		    }
@@ -141,9 +142,9 @@ public class ClassesResolver {
 		return classes;
 	}
 
-	private static Set<Class<?>> injectables(Set<Class<?>> classes) {
-		Set<Class<?>> filteredClasses = new HashSet<>();
-		for (Class<?> clazz : classes) {
+	private static <T> Set<Class<T>> injectables(Set<Class<T>> classes) {
+		Set<Class<T>> filteredClasses = new HashSet<>();
+		for (Class<T> clazz : classes) {
 			if (clazz.isAnnotationPresent(Injectable.class)) {
 				filteredClasses.add(clazz);
 			}
@@ -151,16 +152,16 @@ public class ClassesResolver {
 		return filteredClasses;
 	}
 
-	private <X> Set<Class<?>> withProfiles(Set<Class<?>> classes) {
-		Set<Class<?>> filteredClasses = new HashSet<>();
-		for (Class<?> derivedClass : classes) {
+	private <T> Set<Class<T>> withProfiles(Set<Class<T>> classes) {
+		Set<Class<T>> filteredClasses = new HashSet<>();
+		for (Class<T> derivedClass : classes) {
 			filteredClasses.addAll(filterClassesByInjectableProfile(derivedClass));
 		}
 		return filteredClasses;
 	}
 
-	private Set<Class<?>> filterClassesByInjectableProfile(Class<?> derivedClass) {
-		Set<Class<?>> filteredClasses = new HashSet<>();
+	private <T> Set<Class<T>> filterClassesByInjectableProfile(Class<T> derivedClass) {
+		Set<Class<T>> filteredClasses = new HashSet<>();
 		Injectable injectable = derivedClass.getAnnotation(Injectable.class);
 		String[] derivedClassProfiles = injectable.profiles();
 		if (derivedClassProfiles.length == 0) {
@@ -171,9 +172,9 @@ public class ClassesResolver {
 		return filteredClasses;
 	}
 
-	private Set<Class<?>> filterClassesByProfileMatch(Class<?> derivedClass, String[] derivedClassProfiles) {
+	private <T> Set<Class<T>> filterClassesByProfileMatch(Class<T> derivedClass, String[] derivedClassProfiles) {
 		
-	    Set<Class<?>> filteredClasses = new HashSet<>();
+	    Set<Class<T>> filteredClasses = new HashSet<>();
 	    
 	    for (String activeProfile : this.profiles) {
 	        if (isProfileMatch(derivedClassProfiles, activeProfile)) {
@@ -188,9 +189,9 @@ public class ClassesResolver {
 	    return Arrays.stream(derivedClassProfiles).anyMatch(derivedProfile -> derivedProfile.equals(activeProfile));
 	}
 
-	private static Set<Class<?>> nonAbstractClasses(Set<Class<?>> classes) {
-		Set<Class<?>> filteredClasses = new HashSet<>();
-		for (Class<?> clazz : classes) {
+	private static <T> Set<Class<T>> nonAbstractClasses(Set<Class<T>> classes) {
+		Set<Class<T>> filteredClasses = new HashSet<>();
+		for (Class<T> clazz : classes) {
 			if (!Modifier.isAbstract(clazz.getModifiers())) {
 				filteredClasses.add(clazz);
 			}
@@ -198,18 +199,18 @@ public class ClassesResolver {
 		return filteredClasses;
 	}
 
-	private void registerComponents(Class<?> clazz) throws ClassNotFoundException, IOException, URISyntaxException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
+	private <T> void registerComponents(Class<T> clazz) throws ClassNotFoundException, IOException, URISyntaxException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {
 		if (!this.componentSets.containsKey(clazz)) {
 			Set<Class<?>> componentClasses = new HashSet<>();
 			this.componentSets.put(clazz, componentClasses);
-			Set<Class<?>> classes = nonAbstractClasses(withProfiles(injectables(getDerivedClasses(clazz, clazz.getPackageName()))));
-			for (Class<?> c : classes) {
+			Set<Class<T>> classes = nonAbstractClasses(withProfiles(injectables(getDerivedClasses(clazz, clazz.getPackageName()))));
+			for (Class<T> c : classes) {
 				componentClasses.add(c);
 			}
 		}
 	}
 
-	public Set<Class<?>> getSet(Class<?> hint) throws ClassNotFoundException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException, IOException, URISyntaxException {
+	public <T> Set<Class<?>> getSet(Class<T> hint) throws ClassNotFoundException, InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException, IOException, URISyntaxException {
 		if (componentSets.get(hint) == null) {
 			registerComponents(hint);
 		}

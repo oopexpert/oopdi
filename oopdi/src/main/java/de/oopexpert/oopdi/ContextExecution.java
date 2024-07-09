@@ -50,7 +50,5 @@ public class ContextExecution {
 	private <T> Function<Context<?>, Runnable> getRunnableWithContext(Class<T> clazz, Function<T, Runnable> f) {
 		return (context) -> f.apply(context.getOrCreateInstance(clazz))::run;
 	}
-
-
 	
 }
