@@ -27,10 +27,6 @@ public class ProxyManager {
 		
 	}
 
-	public static <X> Scope scopeOf(Class<X> c) {
-		return c.getAnnotation(Injectable.class).scope();
-	}
-
 	public static boolean isImmediateRequested(Class<?> c) {
 		return c.getAnnotation(Injectable.class).immediate();
 	}
@@ -83,7 +79,7 @@ public class ProxyManager {
         
         Supplier<T> realObjectSupplier;
         
-        if (isImmediateInstantiationPossible(clazz) && isImmediateRequested(clazz)) {
+        if (isImmediateRequested(clazz) && Scope.isImmediateInstantiationPossible(clazz)) {
 			T realObject = realObjectCreator.apply(clazz);
         	realObjectSupplier = () -> realObject;
         } else {
@@ -94,10 +90,6 @@ public class ProxyManager {
         	return method.invoke(realObjectSupplier.get(), args);
         });
 		return enhancer;
-	}
-
-	public static boolean isImmediateInstantiationPossible(Class<?> clazz) {
-		return scopeOf(clazz).equals(Scope.GLOBAL) || scopeOf(clazz).equals(Scope.THREAD);
 	}
 
     private <T> T createProxyWithSingleConstructor(Class<T> clazz, java.lang.reflect.Constructor<?> constructor, Function<Class<T>, T> realObjectCreator) {

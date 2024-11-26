@@ -22,7 +22,9 @@ import de.oopexpert.oopdi.annotation.PostConstruct;
 import de.oopexpert.oopdi.exception.CannotInject;
 import de.oopexpert.oopdi.exception.MultipleClassesLeftAfterFiltering;
 import de.oopexpert.oopdi.exception.MultipleConstructors;
+import de.oopexpert.oopdi.exception.MultiplePostConstructMethods;
 import de.oopexpert.oopdi.exception.NoClassesLeftAfterFiltering;
+import de.oopexpert.oopdi.exception.UnderConstruction;
 
 public class Context<T> {
 
@@ -97,26 +99,36 @@ public class Context<T> {
 
 	private <A> A getOrCreate(Class<A> c)  {
 		
-	    if (!c.isAnnotationPresent(Injectable.class)) {
-        	throw new RuntimeException("Will not instantiate Class " + c.getName() + ". It is not annotated as 'Injectable'!");
-	    }
-	    
-	    if (Modifier.isAbstract(c.getModifiers())) {
-        	throw new RuntimeException("Cannot instantiate Class " + c.getName() + ". It is abstract!");
-	    }
-
-	    if (ProxyManager.isImmediateRequested(c) && !ProxyManager.isImmediateInstantiationPossible(c)) {
-        	throw new RuntimeException("Missconfiguration of Class " + c.getName() + ". It is demanded to be intantiated immediately but this is only possible with scopes of GLOBAL and THREAD.");
-	    }
+	    checkInjectableAnnotated(c);
+	    checkNonAbstract(c);
+	    checkImmediateInstantiationConfiguration(c);
 
 		return getOrCreateInjectable(c);
 
 	}
 
+	private <A> void checkImmediateInstantiationConfiguration(Class<A> c) {
+		if (ProxyManager.isImmediateRequested(c) && !Scope.isImmediateInstantiationPossible(c)) {
+        	throw new RuntimeException("Missconfiguration of Class " + c.getName() + ". It is demanded to be intantiated immediately but this is only possible with scopes of GLOBAL and THREAD.");
+	    }
+	}
+
+	private <A> void checkNonAbstract(Class<A> c) {
+		if (Modifier.isAbstract(c.getModifiers())) {
+        	throw new RuntimeException("Cannot instantiate Class " + c.getName() + ". It is abstract!");
+	    }
+	}
+
+	private <A> void checkInjectableAnnotated(Class<A> c) {
+		if (!c.isAnnotationPresent(Injectable.class)) {
+        	throw new RuntimeException("Will not instantiate Class " + c.getName() + ". It is not annotated as 'Injectable'!");
+	    }
+	}
+
 	private <X> X getOrCreateInjectable(Class<X> x) {
 		try {
 			Class<X> c = (Class<X>) classesResolver.determineRelevantClass(x);
-			InstancesState scopedMap = scopedInstances.getScopedInstancesState(ProxyManager.scopeOf(c));
+			InstancesState scopedMap = scopedInstances.getScopedInstancesState(Scope.of(c));
 			X instance;
 			if (!scopedMap.instanceExists(c)) {
 				System.out.print("Created instance of " + c.getName() + "...");
@@ -137,7 +149,7 @@ public class Context<T> {
 	}
 
 	private <X> X createInstance(Class<?> c) throws InstantiationException, IllegalAccessException, InvocationTargetException, ClassNotFoundException, IOException, URISyntaxException, NoSuchMethodException {
-		Set<Class<?>> constructorInjection = scopedInstances.getScopedInstancesState(ProxyManager.scopeOf(c)).constructorInjection;
+		Set<Class<?>> constructorInjection = scopedInstances.getScopedInstancesState(Scope.of(c)).constructorInjection;
 		synchronized (constructorInjection) {
 			X instance;
 			if (constructorInjection.contains(c)) {

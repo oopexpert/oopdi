@@ -1,4 +1,4 @@
-package de.oopexpert.oopdi;
+package de.oopexpert.oopdi.exception;
 
 public class UnderConstruction extends RuntimeException {
 
