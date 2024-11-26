@@ -46,7 +46,7 @@ public class OOPDI<T> {
 		System.out.print("Create entry proxy for class " + clazz.getName() + "...");
         Enhancer enhancer = new Enhancer();
         enhancer.setSuperclass(clazz);
-        enhancer.setCallback(new RequestScopeInterceptor(createContext(), clazz));
+        enhancer.setCallback(new RequestScopeInterceptor<>(createContext(), clazz));
         T create = (T) enhancer.create();
 		System.out.println("ok");
 		return create;
