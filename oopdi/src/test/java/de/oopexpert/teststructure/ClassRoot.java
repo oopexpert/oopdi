@@ -17,7 +17,6 @@ public class ClassRoot {
 	private Set<ClassB> classesB;
 	
 	public void executeRunnable() {
-		System.out.println(this.toString());
 	}
 	
 	public Set<ClassB> getClassesB() {

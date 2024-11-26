@@ -23,7 +23,7 @@ public enum Scope {
 	REQUEST {
 		@Override
 		InstancesState select(InstancesState globalInstances, InstancesState threadInstances) {
-			return RequestScope.getRequestInstances();
+			return RequestScope.getRequestScopedInstances();
 		}
 	};
 

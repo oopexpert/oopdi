@@ -4,6 +4,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import net.sf.cglib.proxy.Enhancer;
+
 public class OOPDI<T> {
 
 	private ScopedInstances scopedInstances;
@@ -40,4 +42,14 @@ public class OOPDI<T> {
 		contextExecution.execConsumer(clazz, f, x);
 	}
 
+	public <T> T getInstance(Class<T> clazz) {
+		System.out.print("Create entry proxy for class " + clazz.getName() + "...");
+        Enhancer enhancer = new Enhancer();
+        enhancer.setSuperclass(clazz);
+        enhancer.setCallback(new RequestScopeInterceptor(createContext(), clazz));
+        T create = (T) enhancer.create();
+		System.out.println("ok");
+		return create;
+    }
+	
 }

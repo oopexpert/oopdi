@@ -40,7 +40,7 @@ public abstract class RequestScope {
 
     }
 
-	private static void init(RequestScope request) {
+	private static void init() {
 		List<InstancesState> list = requestInstanceMaps.get(Thread.currentThread());
 		if (list == null) {
 			list = new ArrayList<>();
@@ -59,7 +59,7 @@ public abstract class RequestScope {
 				
 				try {
 					
-					init(this);
+					init();
 					
 					return prepareOperation.apply(oopdi.createContext()).apply(parameter);
 					
@@ -82,7 +82,7 @@ public abstract class RequestScope {
 				
 				try {
 					
-					init(this);
+					init();
 					
 					OPERATION operation = prepareOperation.apply(oopdi.createContext());
 					return operation.get();
@@ -106,7 +106,7 @@ public abstract class RequestScope {
 
 				try {
 					
-					init(this);
+					init();
 					
 					prepareOperation.apply(oopdi.createContext()).accept(parameter);
 					
@@ -126,7 +126,7 @@ public abstract class RequestScope {
 			protected void exec(Function<Context<?>, OPERATION> prepareOperation) {
 				try {
 					
-					init(this);
+					init();
 					
 					prepareOperation.apply(oopdi.createContext()).run();
 					
@@ -146,16 +146,12 @@ public abstract class RequestScope {
 		}
 	}
 
-	private static InstancesState getRequestScopedInstances() {
+	public static InstancesState getRequestScopedInstances() {
 		List<InstancesState> list = requestInstanceMaps.get(Thread.currentThread());
 		if (list == null) {
 			throw new NoRequestScopeAvailable();
 		}
 		return list.get(0);
-	}
-
-	public static InstancesState getRequestInstances() {
-		return getRequestScopedInstances();
 	}
 
 }

@@ -13,7 +13,7 @@ import de.oopexpert.oopdi.Scope;
 public @interface Injectable {
 
 	Scope scope() default Scope.GLOBAL;
-
+	boolean immediate() default false; 
 	String[] profiles() default {};
 
 }
