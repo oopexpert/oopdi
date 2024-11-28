@@ -64,36 +64,36 @@ public class ClassesResolver {
 
 	private <T> Set<Class<T>> getDerivedClasses(Class<T> parentClass, String packageName) {
 	    
-		Set<Class<T>> classes = new HashSet<>();
-	    
-	    for (String classpathEntry : getClassPathEntries()) {
-	        try {
-				classes.addAll(getDerivedClassesInPath(parentClass, packageName, classpathEntry));
-			} catch (ClassNotFoundException | IOException | URISyntaxException e) {
-				throw new RuntimeException(e);
-			}
-	    }
-	    
-	    return classes;
+        try {
+			
+        	Set<Class<T>> classes = new HashSet<>();
+		    
+		    for (String classpathEntry : getClassPathEntries()) {
+				classes.addAll(getDerivedClassesInClasspath(parentClass, packageName, classpathEntry));
+		    }
+		    
+		    return classes;
+		    
+		} catch (ClassNotFoundException | IOException e) {
+			throw new RuntimeException(e);
+		}
 	}
 	
-	private <T> Set<Class<T>> getDerivedClassesInPath(Class<T> parentClass, String packageName, String classpathEntry) throws ClassNotFoundException, IOException, URISyntaxException {
+	private <T> Set<Class<T>> getDerivedClassesInClasspath(Class<T> parentClass, String packageName, String classpathEntry) throws ClassNotFoundException, IOException {
 	    Set<Class<T>> classes = new HashSet<>();
-	    File entry = new File(classpathEntry);
 	    
 	    if (classpathEntry.endsWith(SUFFIX_JAR)) {
 	        classes.addAll(getDerivedClassesFromJar(parentClass, toPathName(packageName), classpathEntry));
-	    } else if (entry.isFile() && classpathEntry.endsWith(SUFFIX_CLASS)) {
-	        String className = toClassName(packageName, entry);
-	        Class<?> clazz = Class.forName(className);
-	        if (parentClass.isAssignableFrom(clazz) && !parentClass.equals(clazz)) {
-	            classes.add((Class<T>) clazz);
-	        }
 	    } else {
-	        File directory = new File(classpathEntry, toPathName(packageName));
-	        if (directory.exists()) {
-	            classes.addAll(getDerivedClassesFromDirectory(parentClass, packageName, directory));
-	        }
+		    File entry = new File(classpathEntry);
+	    	if (entry.isFile() && classpathEntry.endsWith(SUFFIX_CLASS)) {
+		    	classes.addAll(getDerivedClassesFromDirectoryOrClassFile(parentClass, packageName, entry));
+		    } else {
+		        File directory = new File(classpathEntry, toPathName(packageName));
+		        if (directory.exists()) {
+		            classes.addAll(getDerivedClassesFromDirectory(parentClass, packageName, directory));
+		        }
+		    }
 	    }
 	    return classes;
 	}
@@ -137,7 +137,7 @@ public class ClassesResolver {
 		return packageName.replace(PACKAGE_SEPARATOR, PATH_SEPARATOR);
 	}
 
-	private <T> Set<Class<T>> getDerivedClassesFromDirectory(Class<T> parentClass, String packageName, File directory) throws ClassNotFoundException, IOException, URISyntaxException {
+	private <T> Set<Class<T>> getDerivedClassesFromDirectory(Class<T> parentClass, String packageName, File directory) throws ClassNotFoundException {
         Set<Class<T>> classes = new HashSet<>();
 		for (File file : directory.listFiles()) {
 			classes.addAll(getDerivedClassesFromDirectoryOrClassFile(parentClass, packageName, file));
@@ -145,7 +145,7 @@ public class ClassesResolver {
 		return classes;
 	}
 
-	private <T> Set<Class<T>> getDerivedClassesFromDirectoryOrClassFile(Class<T> parentClass, String packageName, File file) throws ClassNotFoundException, IOException, URISyntaxException {
+	private <T> Set<Class<T>> getDerivedClassesFromDirectoryOrClassFile(Class<T> parentClass, String packageName, File file) throws ClassNotFoundException {
         Set<Class<T>> classes = new HashSet<>();
 		if (file.isDirectory()) {
 		    classes.addAll(getDerivedClasses(parentClass, packageName + PACKAGE_SEPARATOR + file.getName()));
