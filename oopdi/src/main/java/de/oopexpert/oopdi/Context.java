@@ -170,7 +170,7 @@ public class Context<T> {
 	
 	private void executePostConstructMethod(Object instance) throws IllegalAccessException, IllegalArgumentException, InvocationTargetException, ClassNotFoundException, InstantiationException, NoSuchMethodException, IOException, URISyntaxException {
 		
-		Set<Method> postConstructMethods = Arrays.asList(instance.getClass().getDeclaredMethods()).stream().filter(method -> method.isAnnotationPresent(PostConstruct.class)).collect(Collectors.toSet());
+		Set<Method> postConstructMethods = Arrays.stream(instance.getClass().getDeclaredMethods()).filter(method -> method.isAnnotationPresent(PostConstruct.class)).collect(Collectors.toSet());
 
 		if (postConstructMethods.size() > 1) {
 			throw new MultiplePostConstructMethods(instance.getClass());
