@@ -1,6 +1,8 @@
 package de.oopexpert.oopdi;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -73,6 +75,8 @@ public class ProxyManager {
         return (T) createEnhancer(clazz, realObjectCreator).create();
     }
 
+    private static final ThreadLocal<List<InstancesState>> requestScope = new ThreadLocal<>();
+
 	private <T> Enhancer createEnhancer(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
 		Enhancer enhancer = new Enhancer();
         enhancer.setSuperclass(clazz);
@@ -87,7 +91,23 @@ public class ProxyManager {
         }
         
         enhancer.setCallback((MethodInterceptor) (obj, method, args, proxy) -> {
-        	return method.invoke(realObjectSupplier.get(), args);
+            List<InstancesState> list = requestScope.get();
+    		if (list == null) {
+                list = new ArrayList<InstancesState>();
+    			requestScope.set(list);
+            }
+			list.add(0, new InstancesState());
+			System.out.println("added InstanceState");
+            try {
+            	return method.invoke(realObjectSupplier.get(), args);
+            } finally {
+        		list.remove(0);
+    			System.out.println("removed InstanceState");
+        		if (list.isEmpty()) {
+        			requestScope.remove();
+        		}
+            }
+            	
         });
 		return enhancer;
 	}

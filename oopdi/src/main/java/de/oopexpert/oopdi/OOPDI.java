@@ -4,8 +4,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-import net.sf.cglib.proxy.Enhancer;
-
 public class OOPDI<T> {
 
 	private ScopedInstances scopedInstances;
@@ -15,6 +13,8 @@ public class OOPDI<T> {
 
 	private ProxyManager proxyManager = new ProxyManager();
 	private ClassesResolver classesResolver;
+
+	private Context<T> context;
 	
     public OOPDI(Class<T> rootClazz, String... profiles) {
     	this.scopedInstances = new ScopedInstances();
@@ -22,8 +22,11 @@ public class OOPDI<T> {
     	this.rootClazz = rootClazz;
 	}
 
-    Context<T> createContext() {
-    	return new Context<T>(this, rootClazz, scopedInstances, proxyManager, classesResolver);
+    Context<T> getContext() {
+    	if (this.context == null) {
+        	this.context = new Context<T>(this, rootClazz, scopedInstances, proxyManager, classesResolver);
+    	}
+    	return this.context;
     }
 
 	public <T1> void execRunnable(Class<T1> clazz, Function<T1, Runnable> f) {
@@ -44,10 +47,11 @@ public class OOPDI<T> {
 
 	public <T> T getInstance(Class<T> clazz) {
 		System.out.print("Create entry proxy for class " + clazz.getName() + "...");
-        Enhancer enhancer = new Enhancer();
-        enhancer.setSuperclass(clazz);
-        enhancer.setCallback(new RequestScopeInterceptor<>(createContext(), clazz));
-        T create = (T) enhancer.create();
+//        Enhancer enhancer = new Enhancer();
+//        enhancer.setSuperclass(clazz);
+//        enhancer.setCallback(new RequestScopeInterceptor<>(createContext(), clazz));
+//        T create = (T) enhancer.create();
+		T create = getContext().getOrCreateInstance(clazz);
 		System.out.println("ok");
 		return create;
     }

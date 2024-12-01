@@ -61,7 +61,7 @@ public abstract class RequestScope {
 					
 					init();
 					
-					return prepareOperation.apply(oopdi.createContext()).apply(parameter);
+					return prepareOperation.apply(oopdi.getContext()).apply(parameter);
 					
 				} finally {
 					cleanup();
@@ -84,7 +84,7 @@ public abstract class RequestScope {
 					
 					init();
 					
-					OPERATION operation = prepareOperation.apply(oopdi.createContext());
+					OPERATION operation = prepareOperation.apply(oopdi.getContext());
 					return operation.get();
 					
 				} finally {
@@ -108,7 +108,7 @@ public abstract class RequestScope {
 					
 					init();
 					
-					prepareOperation.apply(oopdi.createContext()).accept(parameter);
+					prepareOperation.apply(oopdi.getContext()).accept(parameter);
 					
 				} finally {
 					cleanup();
@@ -128,7 +128,7 @@ public abstract class RequestScope {
 					
 					init();
 					
-					prepareOperation.apply(oopdi.createContext()).run();
+					prepareOperation.apply(oopdi.getContext()).run();
 					
 				} finally {
 					cleanup();
