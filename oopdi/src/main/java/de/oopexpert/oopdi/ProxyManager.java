@@ -35,8 +35,6 @@ public class ProxyManager {
 
 	private <T> T proxy(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
 		
-		System.out.print("Create proxy of " + clazz.getName() + "...");
-		
 		java.lang.reflect.Constructor<?>[] constructors = clazz.getDeclaredConstructors();
 
 		T proxiedObject;
@@ -53,8 +51,6 @@ public class ProxyManager {
             // More than one constructor defined, which is not allowed
             throw new CannotInject("Multiple constructors found in class: " + clazz.getName());
         }
-
-		System.out.println("ok");
 
 		return proxiedObject;
 	}

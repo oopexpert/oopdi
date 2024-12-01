@@ -22,7 +22,7 @@ public class OOPDI<T> {
     	this.rootClazz = rootClazz;
 	}
 
-    Context<T> getContext() {
+    synchronized Context<T> getContext() {
     	if (this.context == null) {
         	this.context = new Context<T>(this, rootClazz, scopedInstances, proxyManager, classesResolver);
     	}
@@ -46,14 +46,7 @@ public class OOPDI<T> {
 	}
 
 	public <T> T getInstance(Class<T> clazz) {
-		System.out.print("Create entry proxy for class " + clazz.getName() + "...");
-//        Enhancer enhancer = new Enhancer();
-//        enhancer.setSuperclass(clazz);
-//        enhancer.setCallback(new RequestScopeInterceptor<>(createContext(), clazz));
-//        T create = (T) enhancer.create();
-		T create = getContext().getOrCreateInstance(clazz);
-		System.out.println("ok");
-		return create;
+		return getContext().getOrCreateInstance(clazz);
     }
 	
 }
