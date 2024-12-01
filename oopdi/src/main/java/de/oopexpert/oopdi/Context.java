@@ -108,7 +108,7 @@ public class Context<T> {
 	}
 
 	private <A> void checkImmediateInstantiationConfiguration(Class<A> c) {
-		if (ProxyManager.isImmediateRequested(c) && !Scope.isImmediateInstantiationPossible(c)) {
+		if (ProxyManager.isImmediateInstantiationRequested(c) && !Scope.isImmediateInstantiationPossible(c)) {
         	throw new RuntimeException("Missconfiguration of Class " + c.getName() + ". It is demanded to be intantiated immediately but this is only possible with scopes of GLOBAL and THREAD.");
 	    }
 	}
@@ -213,7 +213,7 @@ public class Context<T> {
 	}
 
 	public <A> A getOrCreateInstance(Class<A> clazz) {
-		return (A) proxyManager.proxyIfNotExists(proxyManager.nonProxyClazz(clazz), this::getOrCreate);
+		return (A) proxyManager.proxyIfNotExists(clazz, this::getOrCreate);
 	}
 
 }
