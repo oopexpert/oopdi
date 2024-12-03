@@ -38,7 +38,7 @@ public enum Scope {
 	REQUEST {
 		@Override
 		InstancesState select(InstancesState globalInstances, InstancesState threadInstances) {
-			return RequestScope.getRequestScopedInstances();
+			return ProxyManager.getRequestScopedInstances();
 		}
 		@Override
 		boolean isImmediateInstantiationPossible() {

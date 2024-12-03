@@ -9,6 +9,7 @@ import java.util.function.Supplier;
 
 import de.oopexpert.oopdi.annotation.Injectable;
 import de.oopexpert.oopdi.exception.CannotInject;
+import de.oopexpert.oopdi.exception.NoRequestScopeAvailable;
 import net.sf.cglib.proxy.Enhancer;
 import net.sf.cglib.proxy.MethodInterceptor;
 import net.sf.cglib.proxy.MethodProxy;
@@ -61,6 +62,14 @@ public class ProxyManager {
 
     private static final ThreadLocal<List<InstancesState>> requestScope = new ThreadLocal<>();
 
+	public static InstancesState getRequestScopedInstances() {
+		List<InstancesState> list = requestScope.get();
+		if (list == null) {
+			throw new NoRequestScopeAvailable();
+		}
+		return list.get(0);
+	}
+	
 	private <T> Enhancer createEnhancer(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
 		
 		Enhancer enhancer = new Enhancer();

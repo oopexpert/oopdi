@@ -16,12 +16,12 @@ class TestOOPDI {
 		
 		OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
 		
-		oopdi.execRunnable(ClassRoot.class, r -> r::executeRunnable);
-		oopdi.execRunnable(ClassRoot.class, r -> r::executeRunnable);
+		oopdi.getInstance(ClassRoot.class).executeRunnable();
+		oopdi.getInstance(ClassRoot.class).executeRunnable();
 		
-		Set<ClassB> classesB = oopdi.execSupplier(ClassRoot.class, r -> r::getClassesB);
+		Set<ClassB> classesB = oopdi.getInstance(ClassRoot.class).getClassesB();
 		
-		Integer increment = oopdi.execFunction(classesB.iterator().next().getClass(), c -> c::executeFunction, 2);
+		Integer increment = oopdi.getInstance(classesB.iterator().next().getClass()).executeFunction(2);
 		
 		Assertions.assertEquals(3, increment);
 		
