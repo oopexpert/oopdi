@@ -42,7 +42,7 @@ class TestOOPDI {
 	}
 
 	@Test
-	void test4() {
+	void test5() {
 		
 		OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
 		
@@ -55,7 +55,7 @@ class TestOOPDI {
 	}
 
 	@Test
-	void test3() {
+	void test4() {
 		
 		OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
 		
@@ -66,5 +66,18 @@ class TestOOPDI {
 		Assertions.assertEquals(EXPECTED, instance.getDbUsername());
 		
 	}
-	
+
+	@Test
+	void test3() {
+		
+		OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
+		
+		int EXPECTED = 4;
+		
+		ClassA instance = oopdi.getInstance(ClassA.class);
+
+		Assertions.assertEquals(EXPECTED, instance.getCounter());
+		
+	}
+
 }

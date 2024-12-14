@@ -63,15 +63,13 @@ public class Context<T> {
 
 	private void processField(Object instance, Field field) throws IllegalAccessException, ClassNotFoundException, InstantiationException, InvocationTargetException, NoSuchMethodException, IOException, URISyntaxException {
 		field.setAccessible(true);
-		if (field.get(instance) == null) {
-		    if (field.isAnnotationPresent(InjectInstance.class)) {
-				inject(instance, field);
-		    } else if (field.isAnnotationPresent(InjectSet.class)) {
-		    	injectSet(instance, field);
-		    } else if (field.isAnnotationPresent(InjectVariable.class)) {
-		    	injectVariable(instance, field);
-		    }
-		}
+	    if (field.isAnnotationPresent(InjectInstance.class)) {
+			inject(instance, field);
+	    } else if (field.isAnnotationPresent(InjectSet.class)) {
+	    	injectSet(instance, field);
+	    } else if (field.isAnnotationPresent(InjectVariable.class)) {
+	    	injectVariable(instance, field);
+	    }
 	}
 
     private static final Map<Class<?>, Function<String, Object>> typeParsers = new HashMap<>();
