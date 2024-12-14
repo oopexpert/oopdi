@@ -5,6 +5,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import de.oopexpert.teststructure.ClassA;
 import de.oopexpert.teststructure.ClassB;
 import de.oopexpert.teststructure.ClassB1;
 import de.oopexpert.teststructure.ClassRoot;
@@ -40,4 +41,17 @@ class TestOOPDI {
 		
 	}
 
+	@Test
+	void test3() {
+		
+		OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
+		
+		String EXPECTED = "jdbc://mysql:userdb";
+		
+		ClassA instance = oopdi.getInstance(ClassA.class);
+
+		Assertions.assertEquals(EXPECTED, instance.getDbURL());
+		
+	}
+	
 }

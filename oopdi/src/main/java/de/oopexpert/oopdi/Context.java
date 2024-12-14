@@ -9,14 +9,17 @@ import java.lang.reflect.Modifier;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import de.oopexpert.oopdi.annotation.InjectInstance;
 import de.oopexpert.oopdi.annotation.InjectSet;
+import de.oopexpert.oopdi.annotation.InjectVariable;
 import de.oopexpert.oopdi.annotation.Injectable;
 import de.oopexpert.oopdi.annotation.PostConstruct;
 import de.oopexpert.oopdi.exception.CannotInject;
@@ -65,8 +68,42 @@ public class Context<T> {
 				inject(instance, field);
 		    } else if (field.isAnnotationPresent(InjectSet.class)) {
 		    	injectSet(instance, field);
+		    } else if (field.isAnnotationPresent(InjectVariable.class)) {
+		    	injectVariable(instance, field);
 		    }
 		}
+	}
+
+    private static final Map<Class<?>, Function<String, Object>> typeParsers = new HashMap<>();
+
+    static {
+        // Populate the map with parsers for each supported type
+        typeParsers.put(Integer.class, Integer::valueOf);
+        typeParsers.put(int.class, Integer::parseInt);
+        typeParsers.put(Long.class, Long::valueOf);
+        typeParsers.put(long.class, Long::parseLong);
+        typeParsers.put(Short.class, Short::valueOf);
+        typeParsers.put(short.class, Short::parseShort);
+        typeParsers.put(Float.class, Float::valueOf);
+        typeParsers.put(float.class, Float::parseFloat);
+        typeParsers.put(Double.class, Double::valueOf);
+        typeParsers.put(double.class, Double::parseDouble);
+        // Add additional types as needed
+    }
+
+	private void injectVariable(Object instance, Field field) throws IllegalArgumentException, IllegalAccessException {
+		
+		VariableSource source = field.getAnnotation(InjectVariable.class).source();
+		String key = field.getAnnotation(InjectVariable.class).key();
+		String valueByKey = source.getValueByKey(key);
+		
+		Function<String, Object> parser = typeParsers.get(field.getType());
+        if (parser != null) {
+            field.set(instance, parser.apply(valueByKey));
+        } else {
+        	field.set(instance, valueByKey);
+        }
+
 	}
 
 	private void injectSet(Object instance, Field field) throws IllegalAccessException, ClassNotFoundException, IOException, URISyntaxException, InstantiationException, InvocationTargetException, NoSuchMethodException, IllegalArgumentException {

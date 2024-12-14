@@ -21,5 +21,7 @@ jobs:
         distribution: 'temurin'
 
     - name: Build with Maven
+      env:
+        dbUrl: "jdbc://mysql:userdb"
       working-directory: oopdi
       run: mvn -B package --file pom.xml
