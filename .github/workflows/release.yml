@@ -31,6 +31,9 @@ jobs:
           distribution: 'temurin'
 
       - name: Build application
+        env:
+          dbUrl: "jdbc://mysql:userdb"
+        working-directory: oopdi
         run: |
           # Replace with your actual build command, e.g., Maven or Gradle
           mvn clean package --file pom.xml -DdbUsername=dbUser1 -Dcounter=4
