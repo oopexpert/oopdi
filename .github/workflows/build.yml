@@ -24,4 +24,4 @@ jobs:
       env:
         dbUrl: "jdbc://mysql:userdb"
       working-directory: oopdi
-      run: mvn -B package --file pom.xml
+      run: mvn -B package --file pom.xml -DdbUsername=dbUser1

@@ -42,7 +42,7 @@ class TestOOPDI {
 	}
 
 	@Test
-	void test3() {
+	void test4() {
 		
 		OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
 		
@@ -51,6 +51,19 @@ class TestOOPDI {
 		ClassA instance = oopdi.getInstance(ClassA.class);
 
 		Assertions.assertEquals(EXPECTED, instance.getDbURL());
+		
+	}
+
+	@Test
+	void test3() {
+		
+		OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
+		
+		String EXPECTED = "dbUser1";
+		
+		ClassA instance = oopdi.getInstance(ClassA.class);
+
+		Assertions.assertEquals(EXPECTED, instance.getDbUsername());
 		
 	}
 	
