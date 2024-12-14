@@ -33,7 +33,7 @@ jobs:
       - name: Build application
         run: |
           # Replace with your actual build command, e.g., Maven or Gradle
-          ./mvnw clean package --file pom.xml -DdbUsername=dbUser1 -Dcounter=4
+          ./mvn clean package --file pom.xml -DdbUsername=dbUser1 -Dcounter=4
 
       - name: Upload artifact to GitHub Release
         uses: ncipollo/release-action@v1
