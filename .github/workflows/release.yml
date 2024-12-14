@@ -1,0 +1,47 @@
+name: Release Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Git tag for the release'
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Ensures all tags are fetched
+
+      - name: Fetch tags
+        run: git fetch --tags
+
+      - name: Checkout specific tag
+        run: |
+          git checkout ${{ github.event.inputs.tag_name }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Build application
+        run: |
+          # Replace with your actual build command, e.g., Maven or Gradle
+          ./mvnw clean package --file pom.xml -DdbUsername=dbUser1 -Dcounter=4
+
+      - name: Upload artifact to GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.event.inputs.tag_name }}
+          name: Release ${{ github.event.inputs.tag_name }}
+          body: |
+            This is an automated release for ${{ github.event.inputs.tag_name }}.
+          artifacts: |
+            target/*.jar # Adjust to the path of your built artifact
+          token: ${{ secrets.GITHUB_TOKEN }}
