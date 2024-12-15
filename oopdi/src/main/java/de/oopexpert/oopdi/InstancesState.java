@@ -21,5 +21,19 @@ public class InstancesState {
 	public <X> X get(Class<X> c) {
 		return (X) this.instances.get(c);
 	}
+	
+	private int callDepth;
+	
+	public void incrementCallDepth() {
+		callDepth++;
+	}
 
+	public void decrementCallDepth() {
+		callDepth--;
+	}
+
+	public int getCallDepth() {
+		return callDepth;
+	}
+	
 }

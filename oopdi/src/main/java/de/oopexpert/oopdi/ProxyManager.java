@@ -1,8 +1,6 @@
 package de.oopexpert.oopdi;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -60,14 +58,14 @@ public class ProxyManager {
         return (T) createEnhancer(clazz, realObjectCreator).create();
     }
 
-    private static final ThreadLocal<List<InstancesState>> requestScope = new ThreadLocal<>();
+    private static final ThreadLocal<InstancesState> requestScope = new ThreadLocal<>();
 
 	public static InstancesState getRequestScopedInstances() {
-		List<InstancesState> list = requestScope.get();
-		if (list == null) {
+		InstancesState instanceState = requestScope.get();
+		if (instanceState == null) {
 			throw new NoRequestScopeAvailable();
 		}
-		return list.get(0);
+		return instanceState;
 	}
 	
 	private <T> Enhancer createEnhancer(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
@@ -91,20 +89,20 @@ public class ProxyManager {
 	
 	private <T> Object intercept(Object obj, java.lang.reflect.Method method, Object[] args, MethodProxy proxy, Supplier<T> realObjectSupplier) throws Throwable {
 		
-        List<InstancesState> list = requestScope.get();
+        InstancesState instanceState = requestScope.get();
         
-		if (list == null) {
-            list = new ArrayList<InstancesState>();
-			requestScope.set(list);
+		if (instanceState == null) {
+            instanceState = new InstancesState();
+			requestScope.set(instanceState);
         }
 		
-		list.add(0, new InstancesState());
+		instanceState.incrementCallDepth();
 		
         try {
         	return method.invoke(realObjectSupplier.get(), args);
         } finally {
-    		list.remove(0);
-    		if (list.isEmpty()) {
+    		instanceState.decrementCallDepth();
+    		if (instanceState.getCallDepth() == 0) {
     			requestScope.remove();
     		}
         }

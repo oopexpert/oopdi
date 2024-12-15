@@ -6,6 +6,8 @@ import de.oopexpert.oopdi.annotation.Injectable;
 
 @Injectable
 public class ClassA {
+	
+	private int i;
 
 	@InjectVariable(key = "dbUrl", source = VariableSource.SYSTEM)
 	private String dbURL;
@@ -26,6 +28,14 @@ public class ClassA {
 
 	public int getCounter() {
 		return counter;
+	}
+
+	public int getI() {
+		return i;
+	}
+
+	public void setI(int i) {
+		this.i = i;
 	}
 	
 }
