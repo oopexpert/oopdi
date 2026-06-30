@@ -7,8 +7,8 @@ import java.util.Set;
 
 public class InstancesState {
 
-	public final Map<Class<?>, Object> instances = new HashMap<>();
-	public final Set<Class<?>> constructorInjection = new HashSet<Class<?>>();
+	private final Map<Class<?>, Object> instances = new HashMap<>();
+	private final Set<Class<?>> constructorInjection = new HashSet<Class<?>>();
 
 	public boolean instanceExists(Class<?> c) {
 		return this.instances.get(c) != null;
@@ -20,6 +20,18 @@ public class InstancesState {
 
 	public <X> X get(Class<X> c) {
 		return (X) this.instances.get(c);
+	}
+
+	public boolean isUnderConstruction(Class<?> c) {
+		return constructorInjection.contains(c);
+	}
+
+	public void markUnderConstruction(Class<?> c) {
+		constructorInjection.add(c);
+	}
+
+	public void unmarkUnderConstruction(Class<?> c) {
+		constructorInjection.remove(c);
 	}
 	
 	private int callDepth;

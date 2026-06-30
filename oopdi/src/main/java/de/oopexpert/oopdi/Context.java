@@ -94,6 +94,10 @@ public class Context<T> {
 		VariableSource source = field.getAnnotation(InjectVariable.class).source();
 		String key = field.getAnnotation(InjectVariable.class).key();
 		String valueByKey = source.getValueByKey(key);
+
+		if (valueByKey == null) {
+			throw new RuntimeException("Cannot inject variable: key '" + key + "' not found in source " + source.name() + " for field '" + field.getName() + "' in " + field.getDeclaringClass().getName());
+		}
 		
 		Function<String, Object> parser = typeParsers.get(field.getType());
         if (parser != null) {
@@ -184,19 +188,19 @@ public class Context<T> {
 	}
 
 	private <X> X createInstance(Class<?> c) throws InstantiationException, IllegalAccessException, InvocationTargetException, ClassNotFoundException, IOException, URISyntaxException, NoSuchMethodException {
-		Set<Class<?>> constructorInjection = scopedInstances.getScopedInstancesState(Scope.of(c)).constructorInjection;
-		synchronized (constructorInjection) {
+		InstancesState scopedMap = scopedInstances.getScopedInstancesState(Scope.of(c));
+		synchronized (scopedMap) {
 			X instance;
-			if (constructorInjection.contains(c)) {
+			if (scopedMap.isUnderConstruction(c)) {
 				throw new UnderConstruction(c.getName() + " is still under construction.");
 			}
-			constructorInjection.add(c);
+			scopedMap.markUnderConstruction(c);
 			try {
 				instance = instanciateWith((Constructor<?>) getConstructor(c));
 			} catch (UnderConstruction cd) {
 				throw new CannotInject("Cycle in dependencies detected while performing constructor injection on " + c.getName(), cd);
 			} finally {
-				constructorInjection.remove(c);
+				scopedMap.unmarkUnderConstruction(c);
 			}
 			
 			return instance;

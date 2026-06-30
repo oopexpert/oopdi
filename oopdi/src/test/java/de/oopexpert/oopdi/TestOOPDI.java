@@ -11,6 +11,7 @@ import de.oopexpert.teststructure.ClassB;
 import de.oopexpert.teststructure.ClassB1;
 import de.oopexpert.teststructure.ClassC;
 import de.oopexpert.teststructure.ClassD;
+import de.oopexpert.teststructure.ClassMissingVar;
 import de.oopexpert.teststructure.ClassRoot;
 
 class TestOOPDI {
@@ -169,6 +170,22 @@ class TestOOPDI {
 
 		Assertions.assertEquals(EXPECTED, instance.getCounter());
 		
+	}
+
+	@Test
+	void testInjectVariableMissingKeyThrowsDescriptiveError() {
+
+		OOPDI<ClassMissingVar> oopdi = new OOPDI<>(ClassMissingVar.class);
+
+		ClassMissingVar instance = oopdi.getInstance(ClassMissingVar.class);
+
+		RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::getMissingValue);
+
+		Assertions.assertTrue(
+			ex.getMessage().contains("definitelyNotSetKey_12345"),
+			"Exception message should contain the missing key name, but was: " + ex.getMessage()
+		);
+
 	}
 
 }

@@ -38,6 +38,13 @@
 						--add-opens=java.base/java.lang=ALL-UNNAMED
 						--add-opens=java.base/java.util=ALL-UNNAMED
 					</argLine>
+					<environmentVariables>
+						<dbUrl>jdbc://mysql:userdb</dbUrl>
+					</environmentVariables>
+					<systemPropertyVariables>
+						<dbUsername>dbUser1</dbUsername>
+						<counter>4</counter>
+					</systemPropertyVariables>
 				</configuration>
 			</plugin>
 		</plugins>

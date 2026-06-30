@@ -113,11 +113,24 @@ public class ProxyManager {
        	return (T) createEnhancer(clazz, realObjectCreator).create(constructor.getParameterTypes(), argsForConstructor(constructor));
     }
     
+    private static final Map<Class<?>, Object> PRIMITIVE_DEFAULTS = new HashMap<>();
+
+    static {
+        PRIMITIVE_DEFAULTS.put(boolean.class, false);
+        PRIMITIVE_DEFAULTS.put(byte.class, (byte) 0);
+        PRIMITIVE_DEFAULTS.put(char.class, (char) 0);
+        PRIMITIVE_DEFAULTS.put(short.class, (short) 0);
+        PRIMITIVE_DEFAULTS.put(int.class, 0);
+        PRIMITIVE_DEFAULTS.put(long.class, 0L);
+        PRIMITIVE_DEFAULTS.put(float.class, 0.0f);
+        PRIMITIVE_DEFAULTS.put(double.class, 0.0d);
+    }
+
     private Object[] argsForConstructor(java.lang.reflect.Constructor<?> constructor) {
-        int paramCount = constructor.getParameterCount();
-        Object[] args = new Object[paramCount];
-        for (int i = 0; i < paramCount; i++) {
-            args[i] = null;
+        Class<?>[] paramTypes = constructor.getParameterTypes();
+        Object[] args = new Object[paramTypes.length];
+        for (int i = 0; i < paramTypes.length; i++) {
+            args[i] = PRIMITIVE_DEFAULTS.getOrDefault(paramTypes[i], null);
         }
         return args;
     }
