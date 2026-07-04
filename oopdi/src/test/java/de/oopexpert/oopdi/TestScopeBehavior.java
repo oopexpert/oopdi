@@ -10,6 +10,9 @@ import de.oopexpert.teststructure.ClassB;
 import de.oopexpert.teststructure.ClassB1;
 import de.oopexpert.teststructure.ClassC;
 import de.oopexpert.teststructure.ClassD;
+import de.oopexpert.teststructure.ClassImmediateLocalMisconfig;
+import de.oopexpert.teststructure.ClassImmediateRequestMisconfig;
+import de.oopexpert.teststructure.ClassImmediateThreadMisconfig;
 import de.oopexpert.teststructure.ClassRoot;
 
 class TestScopeBehavior {
@@ -91,6 +94,42 @@ class TestScopeBehavior {
             "First container should reflect its own GLOBAL scoped state");
         Assertions.assertNotEquals(123, two.getI(),
             "Different OOPDI containers must not share GLOBAL scoped instances");
+
+    }
+
+    @Test
+    void testImmediateThreadScopeMisconfigurationThrows() {
+
+        OOPDI<ClassImmediateThreadMisconfig> oopdi = new OOPDI<>(ClassImmediateThreadMisconfig.class);
+        ClassImmediateThreadMisconfig instance = oopdi.getInstance(ClassImmediateThreadMisconfig.class);
+
+        RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::ping,
+            "THREAD scope with immediate=true should be rejected");
+        Assertions.assertTrue(ex.getMessage().contains("Missconfiguration"));
+
+    }
+
+    @Test
+    void testImmediateLocalScopeMisconfigurationThrows() {
+
+        OOPDI<ClassImmediateLocalMisconfig> oopdi = new OOPDI<>(ClassImmediateLocalMisconfig.class);
+        ClassImmediateLocalMisconfig instance = oopdi.getInstance(ClassImmediateLocalMisconfig.class);
+
+        RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::ping,
+            "LOCAL scope with immediate=true should be rejected");
+        Assertions.assertTrue(ex.getMessage().contains("Missconfiguration"));
+
+    }
+
+    @Test
+    void testImmediateRequestScopeMisconfigurationThrows() {
+
+        OOPDI<ClassImmediateRequestMisconfig> oopdi = new OOPDI<>(ClassImmediateRequestMisconfig.class);
+        ClassImmediateRequestMisconfig instance = oopdi.getInstance(ClassImmediateRequestMisconfig.class);
+
+        RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::ping,
+            "REQUEST scope with immediate=true should be rejected");
+        Assertions.assertTrue(ex.getMessage().contains("Missconfiguration"));
 
     }
 
