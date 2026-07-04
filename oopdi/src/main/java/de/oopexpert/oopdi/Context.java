@@ -15,13 +15,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import de.oopexpert.oopdi.annotation.InjectInstance;
 import de.oopexpert.oopdi.annotation.InjectSet;
 import de.oopexpert.oopdi.annotation.InjectVariable;
 import de.oopexpert.oopdi.annotation.Injectable;
 import de.oopexpert.oopdi.annotation.PostConstruct;
+import de.oopexpert.oopdi.annotation.PreDestroy;
 import de.oopexpert.oopdi.exception.CannotInject;
 import de.oopexpert.oopdi.exception.MultipleClassesLeftAfterFiltering;
 import de.oopexpert.oopdi.exception.MultipleConstructors;
@@ -30,6 +33,8 @@ import de.oopexpert.oopdi.exception.NoClassesLeftAfterFiltering;
 import de.oopexpert.oopdi.exception.UnderConstruction;
 
 public class Context<T> {
+
+	private static final Logger log = LoggerFactory.getLogger(Context.class);
 
 	private ScopedInstances scopedInstances;
 
@@ -90,15 +95,27 @@ public class Context<T> {
     }
 
 	private void injectVariable(Object instance, Field field) throws IllegalArgumentException, IllegalAccessException {
-		
-		VariableSource source = field.getAnnotation(InjectVariable.class).source();
-		String key = field.getAnnotation(InjectVariable.class).key();
+
+		InjectVariable annotation = field.getAnnotation(InjectVariable.class);
+		VariableSource source = annotation.source();
+		String key = annotation.key();
 		String valueByKey = source.getValueByKey(key);
 
 		if (valueByKey == null) {
-			throw new RuntimeException("Cannot inject variable: key '" + key + "' not found in source " + source.name() + " for field '" + field.getName() + "' in " + field.getDeclaringClass().getName());
+			if (!annotation.defaultValue().isEmpty()) {
+				valueByKey = annotation.defaultValue();
+			} else if (annotation.optional()) {
+				// inject null for reference types, zero/false for primitives
+				if (!field.getType().isPrimitive()) {
+					field.set(instance, null);
+				}
+				// primitives already hold their zero value from construction — nothing to set
+				return;
+			} else {
+				throw new RuntimeException("Cannot inject variable: key '" + key + "' not found in source " + source.name() + " for field '" + field.getName() + "' in " + field.getDeclaringClass().getName());
+			}
 		}
-		
+
 		Function<String, Object> parser = typeParsers.get(field.getType());
         if (parser != null) {
             field.set(instance, parser.apply(valueByKey));
@@ -133,7 +150,6 @@ public class Context<T> {
 
 	private <A> void setField(Object instance, Field field, Class<A> fieldClazz, Function<Class<A>, A> creator) throws IllegalAccessException {
 		field.set(instance, proxyManager.proxyIfNotExists(fieldClazz, creator));
-		field.set(proxyManager.proxyIfNotExists(instance), proxyManager.proxyIfNotExists(fieldClazz, creator));
 	}
 
 	private <A> A getOrCreate(Class<A> c)  {
@@ -169,12 +185,11 @@ public class Context<T> {
 			Class<X> c = (Class<X>) classesResolver.determineRelevantClass(x);
 			InstancesState scopedMap = scopedInstances.getScopedInstancesState(Scope.of(c));
 			X instance;
-			synchronized (scopedMap) {
+			synchronized (scopedMap.getLockFor(c)) {
 				if (!scopedMap.instanceExists(c)) {
-					System.out.print("Created instance of " + c.getName() + "...");
 					instance = createInstance(c);
 					scopedMap.put(c, instance);
-					System.out.println("ok");
+					log.debug("Created instance of {}", c.getName());
 					processFields(instance);
 					executePostConstructMethod(instance);
 				} else {
@@ -191,7 +206,7 @@ public class Context<T> {
 
 	private <X> X createInstance(Class<?> c) throws InstantiationException, IllegalAccessException, InvocationTargetException, ClassNotFoundException, IOException, URISyntaxException, NoSuchMethodException {
 		InstancesState scopedMap = scopedInstances.getScopedInstancesState(Scope.of(c));
-		synchronized (scopedMap) {
+		synchronized (scopedMap.getLockFor(c)) {
 			X instance;
 			if (scopedMap.isUnderConstruction(c)) {
 				throw new UnderConstruction(c.getName() + " is still under construction.");
@@ -210,20 +225,32 @@ public class Context<T> {
 	}
 	
 	private void executePostConstructMethod(Object instance) throws IllegalAccessException, IllegalArgumentException, InvocationTargetException, ClassNotFoundException, InstantiationException, NoSuchMethodException, IOException, URISyntaxException {
-		
-		Set<Method> postConstructMethods = Arrays.stream(instance.getClass().getDeclaredMethods()).filter(method -> method.isAnnotationPresent(PostConstruct.class)).collect(Collectors.toSet());
+
+		Set<Method> postConstructMethods = collectPostConstructMethods(instance.getClass());
 
 		if (postConstructMethods.size() > 1) {
 			throw new MultiplePostConstructMethods(instance.getClass());
 		}
-		
+
 		if (postConstructMethods.iterator().hasNext()) {
 			Method method = postConstructMethods.iterator().next();
 			Class<?>[] parameterTypes = method.getParameterTypes();
 			method.setAccessible(true);
 			method.invoke(instance, getOrCreateParametersBy(parameterTypes));
 		}
-		
+
+	}
+
+	private Set<Method> collectPostConstructMethods(Class<?> clazz) {
+		Set<Method> methods = new HashSet<>();
+		if (clazz == null) {
+			return methods;
+		}
+		Arrays.stream(clazz.getDeclaredMethods())
+			.filter(m -> m.isAnnotationPresent(PostConstruct.class))
+			.forEach(methods::add);
+		methods.addAll(collectPostConstructMethods(clazz.getSuperclass()));
+		return methods;
 	}
 
 	private <X> X instanciateWith(Constructor<?> constructor) throws InstantiationException, IllegalAccessException, InvocationTargetException, ClassNotFoundException, IOException, URISyntaxException, NoSuchMethodException {
@@ -255,6 +282,42 @@ public class Context<T> {
 
 	public <A> A getOrCreateInstance(Class<A> clazz) {
 		return (A) proxyManager.proxyIfNotExists(clazz, this::getOrCreate);
+	}
+
+	public void shutdown() {
+		for (InstancesState state : scopedInstances.allInstanceStates()) {
+			for (Object instance : state.allInstances()) {
+				invokePreDestroyMethod(instance);
+			}
+		}
+	}
+
+	private void invokePreDestroyMethod(Object instance) {
+		Set<Method> preDestroyMethods = collectPreDestroyMethods(instance.getClass());
+		if (preDestroyMethods.size() > 1) {
+			throw new RuntimeException("Multiple @PreDestroy methods found in class hierarchy of " + instance.getClass().getName() + ". Only one is allowed.");
+		}
+		if (preDestroyMethods.iterator().hasNext()) {
+			Method method = preDestroyMethods.iterator().next();
+			method.setAccessible(true);
+			try {
+				method.invoke(instance);
+			} catch (IllegalAccessException | InvocationTargetException e) {
+				throw new RuntimeException("Failed to invoke @PreDestroy method '" + method.getName() + "' on " + instance.getClass().getName(), e);
+			}
+		}
+	}
+
+	private Set<Method> collectPreDestroyMethods(Class<?> clazz) {
+		Set<Method> methods = new HashSet<>();
+		if (clazz == null) {
+			return methods;
+		}
+		Arrays.stream(clazz.getDeclaredMethods())
+			.filter(m -> m.isAnnotationPresent(PreDestroy.class))
+			.forEach(methods::add);
+		methods.addAll(collectPreDestroyMethods(clazz.getSuperclass()));
+		return methods;
 	}
 
 }

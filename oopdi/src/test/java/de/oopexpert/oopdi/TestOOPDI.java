@@ -15,7 +15,11 @@ import de.oopexpert.teststructure.ClassC;
 import de.oopexpert.teststructure.ClassD;
 import de.oopexpert.teststructure.ClassGlobalRace;
 import de.oopexpert.teststructure.ClassMissingVar;
+import de.oopexpert.teststructure.ClassOptionalVar;
+import de.oopexpert.teststructure.ClassPostConstructChild;
+import de.oopexpert.teststructure.ClassPreDestroyChild;
 import de.oopexpert.teststructure.ClassRoot;
+import de.oopexpert.teststructure.ClassWithPreDestroy;
 
 class TestOOPDI {
 	
@@ -245,6 +249,83 @@ class TestOOPDI {
 			ex.getMessage().contains("definitelyNotSetKey_12345"),
 			"Exception message should contain the missing key name, but was: " + ex.getMessage()
 		);
+
+	}
+
+	@Test
+	void testPostConstructInSuperclassIsInvoked() {
+
+		OOPDI<ClassPostConstructChild> oopdi = new OOPDI<>(ClassPostConstructChild.class);
+
+		ClassPostConstructChild instance = oopdi.getInstance(ClassPostConstructChild.class);
+
+		Assertions.assertTrue(instance.isBaseInitialized(),
+			"@PostConstruct method declared in abstract superclass should be invoked");
+
+	}
+
+	@Test
+	void testInjectVariableOptionalYieldsNull() {
+
+		OOPDI<ClassOptionalVar> oopdi = new OOPDI<>(ClassOptionalVar.class);
+
+		ClassOptionalVar instance = oopdi.getInstance(ClassOptionalVar.class);
+
+		Assertions.assertNull(instance.getOptionalValue(),
+			"optional=true with missing key should inject null");
+
+	}
+
+	@Test
+	void testInjectVariableDefaultValueUsedWhenKeyMissing() {
+
+		OOPDI<ClassOptionalVar> oopdi = new OOPDI<>(ClassOptionalVar.class);
+
+		ClassOptionalVar instance = oopdi.getInstance(ClassOptionalVar.class);
+
+		Assertions.assertEquals("fallback", instance.getDefaultValue(),
+			"defaultValue should be used when the key is not found");
+
+	}
+
+	@Test
+	void testInjectVariableDefaultValueParsedForPrimitive() {
+
+		OOPDI<ClassOptionalVar> oopdi = new OOPDI<>(ClassOptionalVar.class);
+
+		ClassOptionalVar instance = oopdi.getInstance(ClassOptionalVar.class);
+
+		Assertions.assertEquals(42, instance.getDefaultInt(),
+			"defaultValue should be parsed to the field's primitive type");
+
+	}
+
+	@Test
+	void testPreDestroyIsInvokedOnShutdown() {
+
+		OOPDI<ClassWithPreDestroy> oopdi = new OOPDI<>(ClassWithPreDestroy.class);
+
+		ClassWithPreDestroy instance = oopdi.getInstance(ClassWithPreDestroy.class);
+		Assertions.assertFalse(instance.isDestroyed(), "should not be destroyed before shutdown");
+
+		oopdi.shutdown();
+
+		Assertions.assertTrue(instance.isDestroyed(), "@PreDestroy method should be called on shutdown");
+
+	}
+
+	@Test
+	void testPreDestroyInSuperclassIsInvokedOnShutdown() {
+
+		OOPDI<ClassPreDestroyChild> oopdi = new OOPDI<>(ClassPreDestroyChild.class);
+
+		ClassPreDestroyChild instance = oopdi.getInstance(ClassPreDestroyChild.class);
+		Assertions.assertFalse(instance.isBaseDestroyed(), "should not be destroyed before shutdown");
+
+		oopdi.shutdown();
+
+		Assertions.assertTrue(instance.isBaseDestroyed(),
+			"@PreDestroy method declared in abstract superclass should be called on shutdown");
 
 	}
 
