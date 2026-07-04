@@ -17,4 +17,12 @@ public @interface InjectVariable {
     // The key of the environment variable or property to inject.
     String key();
 
+    // If true, a missing key does not throw — injects null (or zero for primitives).
+    // Overridden by defaultValue if defaultValue is non-empty.
+    boolean optional() default false;
+
+    // Fallback value injected when the key is not found in the source.
+    // An empty string means "no default set". Takes precedence over optional().
+    String defaultValue() default "";
+
 }
