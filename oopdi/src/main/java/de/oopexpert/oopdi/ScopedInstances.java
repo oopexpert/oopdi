@@ -3,13 +3,13 @@ package de.oopexpert.oopdi;
 import static java.lang.Thread.currentThread;
 import static java.util.Collections.synchronizedMap;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.WeakHashMap;
 
 public class ScopedInstances {
 
     private final InstancesState globalInstances = new InstancesState();
-    private final Map<Thread, InstancesState> threadInstanceMaps = synchronizedMap(new HashMap<>());
+    private final Map<Thread, InstancesState> threadInstanceMaps = synchronizedMap(new WeakHashMap<>());
 
 	public InstancesState getScopedInstancesState(Scope scope) {
 		return scope.select(globalInstances, getThreadInstancesMap());
