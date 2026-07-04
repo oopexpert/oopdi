@@ -3,6 +3,7 @@ package de.oopexpert.oopdi;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Assertions;
@@ -18,6 +19,8 @@ import de.oopexpert.teststructure.ClassMissingVar;
 import de.oopexpert.teststructure.ClassOptionalVar;
 import de.oopexpert.teststructure.ClassPostConstructChild;
 import de.oopexpert.teststructure.ClassPreDestroyChild;
+import de.oopexpert.teststructure.ClassRequestScenario;
+import de.oopexpert.teststructure.ClassRequestState;
 import de.oopexpert.teststructure.ClassRoot;
 import de.oopexpert.teststructure.ClassWithPreDestroy;
 
@@ -326,6 +329,98 @@ class TestOOPDI {
 
 		Assertions.assertTrue(instance.isBaseDestroyed(),
 			"@PreDestroy method declared in abstract superclass should be called on shutdown");
+
+	}
+
+	@Test
+	void testRequestScopeNestedCallsShareSameRequestScopedState() {
+
+		OOPDI<ClassRequestScenario> oopdi = new OOPDI<>(ClassRequestScenario.class);
+		ClassRequestScenario scenario = oopdi.getInstance(ClassRequestScenario.class);
+
+		// cglib may call constructors while creating proxies. Reset after obtaining the root proxy
+		// so we only count real REQUEST-scoped instance creations.
+		ClassRequestState.resetCounter();
+
+		ClassRequestScenario.Result result = scenario.execute(77, false);
+
+		Assertions.assertEquals(77, result.getReadFromReader(),
+			"Nested REQUEST-scoped call should read the value written in the same call chain");
+		Assertions.assertEquals(result.getIdInScenario(), result.getIdInReader(),
+			"Both collaborators should resolve to the same REQUEST-scoped state instance in one call chain");
+
+	}
+
+	@Test
+	void testRequestScopeExceptionCleansContextForNextCall() {
+
+		OOPDI<ClassRequestScenario> oopdi = new OOPDI<>(ClassRequestScenario.class);
+		ClassRequestScenario scenario = oopdi.getInstance(ClassRequestScenario.class);
+		ClassRequestState.resetCounter();
+
+		java.lang.reflect.InvocationTargetException ex = Assertions.assertThrows(
+			java.lang.reflect.InvocationTargetException.class,
+			() -> scenario.execute(1, true),
+			"Failure in a proxied call must still clear request scope in finally"
+		);
+		Assertions.assertTrue(ex.getCause() instanceof IllegalStateException,
+			"The proxied method exception should be preserved as InvocationTargetException cause");
+
+		ClassRequestScenario.Result second = scenario.execute(2, false);
+		ClassRequestScenario.Result third = scenario.execute(3, false);
+
+		Assertions.assertEquals(2, second.getReadFromReader());
+		Assertions.assertEquals(3, third.getReadFromReader());
+		Assertions.assertNotEquals(second.getIdInScenario(), third.getIdInScenario(),
+			"Each top-level call should get a fresh REQUEST-scoped state, including after an exception");
+
+	}
+
+	@Test
+	void testRequestScopeIsolatedAcrossThreads() throws InterruptedException {
+
+		OOPDI<ClassRequestScenario> oopdi = new OOPDI<>(ClassRequestScenario.class);
+		ClassRequestScenario scenario = oopdi.getInstance(ClassRequestScenario.class);
+		ClassRequestState.resetCounter();
+
+		CountDownLatch start = new CountDownLatch(1);
+		CountDownLatch done = new CountDownLatch(2);
+		AtomicInteger idThreadOne = new AtomicInteger(-1);
+		AtomicInteger idThreadTwo = new AtomicInteger(-1);
+
+		Thread t1 = new Thread(() -> {
+			try {
+				start.await();
+				ClassRequestScenario.Result result = scenario.execute(111, false);
+				idThreadOne.set(result.getIdInScenario());
+				Assertions.assertEquals(111, result.getReadFromReader());
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			} finally {
+				done.countDown();
+			}
+		});
+
+		Thread t2 = new Thread(() -> {
+			try {
+				start.await();
+				ClassRequestScenario.Result result = scenario.execute(222, false);
+				idThreadTwo.set(result.getIdInScenario());
+				Assertions.assertEquals(222, result.getReadFromReader());
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			} finally {
+				done.countDown();
+			}
+		});
+
+		t1.start();
+		t2.start();
+		start.countDown();
+
+		Assertions.assertTrue(done.await(5, TimeUnit.SECONDS), "Worker threads did not finish in time");
+		Assertions.assertNotEquals(idThreadOne.get(), idThreadTwo.get(),
+			"REQUEST scope instances must be isolated across threads");
 
 	}
 
