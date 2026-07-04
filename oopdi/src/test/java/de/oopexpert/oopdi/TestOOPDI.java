@@ -21,6 +21,7 @@ import de.oopexpert.teststructure.ClassParallelA;
 import de.oopexpert.teststructure.ClassParallelB;
 import de.oopexpert.teststructure.ClassParallelInitTracker;
 import de.oopexpert.teststructure.ClassPostConstructChild;
+import de.oopexpert.teststructure.ClassPostConstructWithParameters;
 import de.oopexpert.teststructure.ClassPreDestroyChild;
 import de.oopexpert.teststructure.ClassRequestScenario;
 import de.oopexpert.teststructure.ClassRequestState;
@@ -269,6 +270,20 @@ class TestOOPDI {
 
 		Assertions.assertTrue(instance.isBaseInitialized(),
 			"@PostConstruct method declared in abstract superclass should be invoked");
+
+	}
+
+	@Test
+	void testPostConstructReceivesBeanAndOopdiParameters() {
+
+		OOPDI<ClassPostConstructWithParameters> oopdi = new OOPDI<>(ClassPostConstructWithParameters.class);
+		ClassPostConstructWithParameters instance = oopdi.getInstance(ClassPostConstructWithParameters.class);
+
+		Assertions.assertTrue(instance.isInitialized(), "@PostConstruct should be invoked");
+		Assertions.assertTrue(instance.isClassAInjectedIntoPostConstruct(),
+			"Bean parameter should be resolved and injected into @PostConstruct");
+		Assertions.assertTrue(instance.isOopdiInjectedIntoPostConstruct(),
+			"OOPDI parameter should be resolved and injected into @PostConstruct");
 
 	}
 
