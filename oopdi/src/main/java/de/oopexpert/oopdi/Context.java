@@ -169,15 +169,17 @@ public class Context<T> {
 			Class<X> c = (Class<X>) classesResolver.determineRelevantClass(x);
 			InstancesState scopedMap = scopedInstances.getScopedInstancesState(Scope.of(c));
 			X instance;
-			if (!scopedMap.instanceExists(c)) {
-				System.out.print("Created instance of " + c.getName() + "...");
-				instance = createInstance(c);
-				scopedMap.put(c,  instance);
-				System.out.println("ok");
-				processFields(instance);
-				executePostConstructMethod(instance);
-			} else {
-				instance = (X) scopedMap.get(c);
+			synchronized (scopedMap) {
+				if (!scopedMap.instanceExists(c)) {
+					System.out.print("Created instance of " + c.getName() + "...");
+					instance = createInstance(c);
+					scopedMap.put(c, instance);
+					System.out.println("ok");
+					processFields(instance);
+					executePostConstructMethod(instance);
+				} else {
+					instance = (X) scopedMap.get(c);
+				}
 			}
 			return instance;
 		} catch (ClassNotFoundException | InstantiationException | IllegalAccessException | InvocationTargetException
