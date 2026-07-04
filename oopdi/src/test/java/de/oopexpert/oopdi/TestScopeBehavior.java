@@ -77,6 +77,24 @@ class TestScopeBehavior {
     }
 
     @Test
+    void testGlobalScopeIsolatedAcrossDifferentContainers() {
+
+        OOPDI<ClassRoot> oopdiOne = new OOPDI<>(ClassRoot.class);
+        OOPDI<ClassRoot> oopdiTwo = new OOPDI<>(ClassRoot.class);
+
+        ClassA one = oopdiOne.getInstance(ClassA.class);
+        ClassA two = oopdiTwo.getInstance(ClassA.class);
+
+        one.setI(123);
+
+        Assertions.assertEquals(123, one.getI(),
+            "First container should reflect its own GLOBAL scoped state");
+        Assertions.assertNotEquals(123, two.getI(),
+            "Different OOPDI containers must not share GLOBAL scoped instances");
+
+    }
+
+    @Test
     void testRequestScope() throws InterruptedException {
 
         OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
