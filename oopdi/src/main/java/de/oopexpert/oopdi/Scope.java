@@ -22,7 +22,7 @@ public enum Scope {
 		}
 		@Override
 		boolean isImmediateInstantiationPossible() {
-			return true;
+			return false;
 		}
 	},
 	LOCAL {
