@@ -24,6 +24,8 @@ import de.oopexpert.teststructure.ClassParallelInitTracker;
 import de.oopexpert.teststructure.ClassPostConstructChild;
 import de.oopexpert.teststructure.ClassPostConstructWithParameters;
 import de.oopexpert.teststructure.ClassPreDestroyChild;
+import de.oopexpert.teststructure.ClassProxyExceptionTarget;
+import de.oopexpert.teststructure.ClassProxyReturnTarget;
 import de.oopexpert.teststructure.ClassRequestScenario;
 import de.oopexpert.teststructure.ClassRequestState;
 import de.oopexpert.teststructure.ClassRoot;
@@ -87,6 +89,35 @@ class TestOOPDI {
 		Assertions.assertThrows(NoClassesLeftAfterFiltering.class,
 			() -> oopdi.getInstance(ClassB2.class).getI(),
 			"ClassB2 requires profile1 and should fail when no profile is active");
+
+	}
+
+	@Test
+	void testProxyMethodReturnValuePassesThrough() {
+
+		OOPDI<ClassProxyReturnTarget> oopdi = new OOPDI<>(ClassProxyReturnTarget.class);
+
+		ClassProxyReturnTarget target = oopdi.getInstance(ClassProxyReturnTarget.class);
+
+		Assertions.assertEquals(9, target.add(4, 5),
+			"Proxy should pass return values from real object unchanged");
+
+	}
+
+	@Test
+	void testProxyMethodExceptionPreservesCause() {
+
+		OOPDI<ClassProxyExceptionTarget> oopdi = new OOPDI<>(ClassProxyExceptionTarget.class);
+
+		ClassProxyExceptionTarget target = oopdi.getInstance(ClassProxyExceptionTarget.class);
+
+		java.lang.reflect.InvocationTargetException ex = Assertions.assertThrows(
+			java.lang.reflect.InvocationTargetException.class,
+			target::fail,
+			"Proxy invocation should surface the reflected method-invoke exception"
+		);
+		Assertions.assertTrue(ex.getCause() instanceof IllegalArgumentException);
+		Assertions.assertEquals("boom", ex.getCause().getMessage());
 
 	}
 
