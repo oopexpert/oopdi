@@ -8,6 +8,7 @@
    - @Injectable
    - @InjectInstance
    - @InjectSet
+   - @InjectVariable
    - @PostConstruct
 
 3. [Scoping](#scoping)
@@ -18,49 +19,28 @@
 
 4. [Core Concepts](#core-concepts)
    - Object Network and Association
-   - Limited Access to Instances
-   - Object Parameter Paradigm
+   - Transparent Proxy Model
+   - Constructor and Field Injection
 
-5. [Method Execution with OOPDI](#method-execution-with-oopdi)
-   - Runnable
-   - Supplier
-   - Consumer
-   - Function
-   - Enforcing Object Parameter Paradigm
-
-6. [Request Scope](#request-scope)
+5. [Request Scope](#request-scope)
    - Understanding Request Scope
    - Example Use Cases
    - Benefits of Request Scope
-   - Implementation Considerations
-   - Conclusion
 
-7. [Initialization with @PostConstruct](#initialization-with-postconstruct)
+6. [Initialization with @PostConstruct](#initialization-with-postconstruct)
    - Purpose and Benefits
    - Single @PostConstruct Method
    - MultiplePostConstructMethodsException
 
-8. [Usage Guidelines](#usage-guidelines)
+7. [Usage Guidelines](#usage-guidelines)
    - Enforcing Encapsulation
    - Controlled Scope
    - Object Lifecycle Management
 
-9. [Advanced Topics](#advanced-topics)
-    - Extending and Customizing
-    - Circular Dependencies
-    - Handling Errors and Exceptions
-    - Testing Strategies
-
-10. [Contributing](#contributing)
-    - Code of Conduct
-    - How to Contribute
-    - Reporting Issues
-
-11. [License](#license)
-
-12. [Acknowledgments](#acknowledgments)
-
-13. [Contact](#contact)
+8. [Advanced Topics](#advanced-topics)
+   - Circular Dependencies
+   - Profiles
+   - Handling Errors and Exceptions
 
 ## Introduction
 
@@ -68,203 +48,295 @@ Welcome to OOPDI, a lightweight and versatile Dependency Injection (DI) framewor
 
 ### Overview
 
-Dependency Injection is a fundamental concept in modern software development, promoting loose coupling, testability, and maintainability of code. OOPDI takes this concept further by introducing innovative features and principles to enhance your dependency management experience.
+Dependency Injection is a fundamental concept in modern software development, promoting loose coupling, testability, and maintainability of code. OOPDI manages object instantiation, field injection, constructor injection, scoping, and lifecycle callbacks transparently via cglib proxies — without requiring any changes to how you write or call your classes.
 
 ### Features
 
-OOPDI offers a rich set of features and concepts:
+OOPDI offers the following features:
 
-- **Annotations**: Use intuitive annotations like `@Injectable`, `@InjectInstance`, `@InjectSet`, and `@PostConstruct` to define and configure dependencies.
+- **Annotations**: `@Injectable`, `@InjectInstance`, `@InjectSet`, `@InjectVariable`, and `@PostConstruct` to define and configure dependencies.
 
-- **Scoping**: Manage the lifecycle and scope of objects with fine-grained control, including Global, Thread, Local, Request, and custom scopes.
+- **Scoping**: Fine-grained lifecycle control with four built-in scopes: Global, Thread, Local, and Request.
 
-- **Core Concepts**: Adhere to principles such as no code generation, object network association, and proper handling of exceptions.
+- **Transparent Proxy Model**: Every managed object is accessed through a cglib subclass proxy. Scope resolution, lazy creation, and request-scope lifetime management happen inside the proxy interceptor without any caller involvement.
 
-- **Object Parameter Paradigm**: Embrace functional programming by enforcing interactions through `Runnable`, `Supplier`, `Consumer`, and `Function` interfaces.
+- **Constructor and Field Injection**: Dependencies can be satisfied either via constructor parameters or via annotated fields, with cycle detection for constructor injection.
 
-- **Request Scope**: Manage dependencies within isolated contexts, not limited to HTTP requests, but also applicable to various application scenarios.
+- **Variable Injection**: Inject environment variables and system properties directly into fields via `@InjectVariable`.
 
-- **Initialization with @PostConstruct**: Simplify and standardize object initialization with the `@PostConstruct` method annotation.
+- **Profile Support**: Activate different implementations of a type per environment using profiles on `@Injectable`.
 
-- **Usage Guidelines**: Discover best practices for utilizing OOPDI to enforce encapsulation and controlled scope in your projects.
-
-- **Advanced Topics**: Explore advanced concepts, customization options, and strategies for testing and error handling.
+- **Initialization with @PostConstruct**: Run a designated initialization method after a bean is fully constructed and all fields are injected.
 
 ## Annotations
 
 ### `@Injectable`
 
-The `@Injectable` annotation is at the heart of OOPDI's dependency injection system. It allows you to mark classes as injectable, indicating that they can be managed by the framework and injected into other parts of your application. `@Injectable` provides flexible scoping options, allowing you to define whether a class should have a global, thread-local, local, or request-specific scope. This powerful annotation empowers you to control the lifecycle and accessibility of objects within your application, promoting modularization and efficient dependency management.
+Marks a class as managed by the framework. Only classes annotated with `@Injectable` can be instantiated and injected.
+
+```java
+@Injectable(scope = Scope.GLOBAL, immediate = false, profiles = {})
+public class MyService { ... }
+```
+
+Attributes:
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `scope` | `Scope` | `GLOBAL` | Defines the lifecycle scope of the instance (see [Scoping](#scoping)). |
+| `immediate` | `boolean` | `false` | If `true`, the real object is created eagerly when the proxy is first registered rather than on the first method call. Only valid with `GLOBAL` scope. |
+| `profiles` | `String[]` | `{}` | If non-empty, the class is only active when at least one of the listed profiles matches the active profiles passed to the `OOPDI` constructor. A class with no profiles is always active. |
 
 ### `@InjectInstance`
 
-The `@InjectInstance` annotation is a powerful tool for fine-grained dependency injection within your application. With `@InjectInstance`, you can specify precise injection points for dependencies based on their types, enabling you to tailor object retrieval to specific use cases. This annotation allows you to inject instances of classes or interfaces directly, giving you full control over the injection process. Whether you need to fetch a unique instance or a collection of instances, `@InjectInstance` provides the flexibility to retrieve the right dependencies when and where you need them.
+Injects the managed instance of the field's declared type into the field. The framework resolves the concrete class to use by scanning the classpath for non-abstract `@Injectable` subclasses of the field type that match the active profiles. Exactly one match must be found.
+
+```java
+@InjectInstance
+private MyService myService;
+```
 
 ### `@InjectSet`
 
-The `@InjectSet` annotation is a versatile tool that simplifies the management of collections of dependencies. With `@InjectSet`, you can preinitialize sets of objects, even when no classes of the specified type are found. This annotation provides a convenient way to handle scenarios where you need to work with sets of objects, whether they are dynamically discovered or predefined. `@InjectSet` offers a "hint" attribute, allowing you to specify the correct type to inject, addressing Java generics' runtime type erasure.
+Injects a `Set` containing one managed instance per concrete `@Injectable` subclass of the hint type that matches the active profiles. Addresses Java's type erasure: the actual element type is specified via the `hint` attribute since generic type parameters are not available at runtime.
+
+```java
+@InjectSet(hint = MyInterface.class)
+private Set<MyInterface> implementations;
+```
+
+### `@InjectVariable`
+
+Injects a value from an external source (environment variable or system property) into a field. The framework reads the value at field-injection time. If the key is not found in the specified source, a `RuntimeException` is thrown with a descriptive message.
+
+```java
+@InjectVariable(key = "DB_URL", source = VariableSource.SYSTEM)
+private String dbUrl;
+
+@InjectVariable(key = "db.username", source = VariableSource.PARAMETER)
+private String dbUsername;
+
+@InjectVariable(key = "pool.size", source = VariableSource.PARAMETER)
+private int poolSize;
+```
+
+`VariableSource` values:
+
+| Value | Reads from |
+|-------|-----------|
+| `SYSTEM` | `System.getenv(key)` |
+| `PARAMETER` | `System.getProperty(key)` |
+
+Supported field types for automatic conversion: `String`, `int`/`Integer`, `long`/`Long`, `short`/`Short`, `float`/`Float`, `double`/`Double`. For any other type the raw `String` value is assigned.
 
 ### `@PostConstruct`
 
-The `@PostConstruct` annotation is a powerful tool for handling object initialization within your application. It allows you to designate a single method in a class as the initialization routine, ensuring that it runs after the class's construction, but before it's made available for use. With `@PostConstruct`, you can streamline the setup of your objects, execute necessary configuration steps, and ensure that dependencies are ready for use. This annotation enforces a single initialization method per class, promoting code clarity and predictable object lifecycles.
+Designates a single method as the post-construction initializer. The method is called after the object is instantiated and all fields are injected. The method may declare parameters; the framework will inject managed instances for each parameter type, following the same rules as constructor injection.
+
+```java
+@PostConstruct
+public void init() {
+    // runs after all fields are injected
+}
+```
+
+Exactly one `@PostConstruct` method per class is permitted. Declaring more than one throws `MultiplePostConstructMethodsException`.
 
 ## Scoping
 
-Scoping is a fundamental concept in OOPDI, enabling you to define how long objects live and under what conditions they can be accessed. OOPDI provides several built-in scopes that cater to different use cases:
+Scoping defines how long a real object lives and when a new one is created. Scope is declared on the `@Injectable` annotation. Every managed object is accessed through a proxy; the scope determines what the proxy hands back when a method is called.
 
-- **Global Scope**: Objects with global scope persist throughout the application's lifetime, making them available for use at any time.
+### Global Scope (`Scope.GLOBAL`)
 
-- **Thread Scope**: Thread-scoped objects are unique to each thread, ensuring that they are isolated and managed separately in multi-threaded environments.
+One instance is created per `OOPDI` container and shared across all threads. The instance is created on the first method call (or eagerly if `immediate = true`) and reused for the entire lifetime of the container.
 
-- **Local Scope**: Local-scoped objects are limited to the context they were created in, allowing for controlled and short-lived dependencies.
+```java
+@Injectable(scope = Scope.GLOBAL)
+public class ApplicationConfig { ... }
+```
 
-- **Request Scope**: Request-scoped objects are specific to a particular unit of work or context, which can be broader than traditional HTTP requests, making them suitable for various application scenarios.
+### Thread Scope (`Scope.THREAD`)
 
-Scoping in OOPDI provides developers with a powerful mechanism to manage object lifecycles, control access, and enforce encapsulation. Explore the [Scoping](#scoping) section to learn more about each scope's characteristics and how to leverage them effectively in your projects.
+One instance is created per thread per `OOPDI` container. Each thread gets its own instance, isolated from all other threads.
+
+```java
+@Injectable(scope = Scope.THREAD)
+public class RequestContext { ... }
+```
+
+### Local Scope (`Scope.LOCAL`)
+
+A fresh real instance is created for **every method call** on the proxy. This means that if bean A holds a proxy reference to local-scoped bean B and calls `b.methodX()` followed by `b.methodY()`, each call receives a completely independent instance of B.
+
+This does **not** affect direct Java calls: if a local-scoped bean calls one of its own methods via `this`, no proxy is involved and the same instance handles the call naturally.
+
+`immediate = true` is not compatible with `LOCAL` scope and will be rejected at startup.
+
+```java
+@Injectable(scope = Scope.LOCAL)
+public class TransientProcessor { ... }
+```
+
+### Request Scope (`Scope.REQUEST`)
+
+One instance is created per outermost proxy method call on the current thread, and that same instance is reused for all nested proxy calls within that call chain. When the outermost call returns, the instance is discarded.
+
+"Request" is not tied to HTTP — it maps to any logical unit of work initiated by a single entry into the proxy. `immediate = true` is not compatible with `REQUEST` scope.
+
+```java
+@Injectable(scope = Scope.REQUEST)
+public class UnitOfWork { ... }
+```
 
 ## Core Concepts
 
-OOPDI is founded on several core concepts that shape its design philosophy and guide its usage:
+### Object Network and Association
 
-- **Limited Access to Instances**: OOPDI adheres to a principle where direct access to instances is restricted. Instead, developers interact with instances through method references, following the functional concept of `Runnable`, `Supplier`, `Consumer`, and `Function`. This approach enhances encapsulation and maintains control over object lifecycles.
+Every class managed by OOPDI is reachable as part of an object network rooted at the class passed to the `OOPDI` constructor. The framework instantiates beans on demand as the object graph is traversed through injection points. You obtain the entry point via `getInstance`:
 
-- **Parameter Object Paradigm**: OOPDI enforces the Parameter Object Paradigm, which emphasizes interactions through functional interfaces—`Runnable`, `Supplier`, `Consumer`, and `Function`. This promotes clean, modular code by ensuring that all interactions with instances follow a functional paradigm.
-
-- **Object Network and Association**: Every class managed by OOPDI is part of an object network derived from a single root class provided during the framework's initialization. Additionally, each class is reachable through associations, ensuring that every dependency is well-defined and accessible in a structured manner.
-
-Explore these core concepts in depth within the framework to harness their benefits and build modular, maintainable applications effectively.
-
-## Method Execution with OOPDI
-
-In the OOPDI (Object-Oriented Dependency Injection) framework, the central OOPDI object provides methods to execute various functional interfaces (Runnable, Supplier, Consumer, Function) within the context of an injectable class.
-
-### Runnable
+```java
+OOPDI<RootService> container = new OOPDI<>(RootService.class);
+RootService root = container.getInstance(RootService.class);
 ```
-public <T1> void execRunnable(Class<T1> clazz, Function<T1, Runnable> f)
+
+`getInstance` can also be called for any other `@Injectable` type reachable in the graph. The container is the single source of truth for all managed instances.
+
+### Transparent Proxy Model
+
+Every managed object is wrapped in a cglib subclass proxy when first registered. The proxy intercepts every method call, resolves the correct real instance based on the bean's scope, and delegates to it. Callers never need to be aware of the proxy — they program against the normal class type.
+
+Because the proxy is a subclass, the managed class must not be `final`, and its constructor must not be `private`.
+
+### Constructor and Field Injection
+
+Dependencies can be declared in two ways:
+
+**Constructor injection**: If a class has a single constructor with parameters, the framework resolves each parameter type as a managed bean and passes it at construction time. A class with more than one constructor is rejected.
+
+```java
+@Injectable
+public class OrderService {
+    private final PaymentService payment;
+
+    public OrderService(PaymentService payment) {
+        this.payment = payment;
+    }
+}
 ```
-Executes a Runnable method within the context of an injectable class specified by clazz. The f parameter represents a method reference that returns a Runnable. This method is suitable for actions that do not require input parameters and do not produce a result.
 
-### Supplier
-```
-public <T1, Y> Y execSupplier(Class<T1> clazz, Function<T1, Supplier<Y>> f)
-```
-Executes a Supplier method within the context of an injectable class specified by clazz. The f parameter represents a method reference that returns a Supplier providing a result of type Y. This method is suitable for actions that produce a result without taking any input parameters.
+**Field injection**: Fields annotated with `@InjectInstance`, `@InjectSet`, or `@InjectVariable` are injected after the object is constructed. Field injection traverses the full superclass hierarchy so annotated fields in abstract base classes are also injected.
 
-### Function
-```
-public <T1, X, Y> Y execFunction(Class<T1> clazz, Function<T1, Function<X, Y>> f, X x)
-```
-Executes a Function method within the context of an injectable class specified by clazz. The f parameter represents a method reference that returns a Function transforming input of type X into a result of type Y. The x parameter is the input value for the function. This method is suitable for actions that transform input into a result.
-
-### Consumer
-```
-public <T1, X> void execConsumer(Class<T1> clazz, Function<T1, Consumer<X>> f, X x)
-```
-Executes a Consumer method within the context of an injectable class specified by clazz. The f parameter represents a method reference that returns a Consumer accepting input of type X. The x parameter is the input value for the consumer. This method is suitable for actions that accept input without producing a result.
-
-### Object Parameter Paradigm
-
-In the OOPDI (Object-Oriented Dependency Injection) framework, the Object Parameter Paradigm enforces a design principle where method parameters are always passed as objects, rather than primitive types. This paradigm is particularly enforced due to the usage of functional interfaces such as Runnable, Supplier, Consumer, and Function, which are designed to work with objects.
-
-Why Use the Object Parameter Paradigm?
-
-- Flexibility: By passing parameters as objects, methods can accept a wide range of inputs, including complex data structures and custom types.
-
-- Consistency: Enforcing object parameters promotes consistency across method signatures and encourages a uniform approach to data handling.
-
-- Interoperability: Using objects as parameters enhances interoperability between different parts of the framework and third-party libraries, as objects are universally understood and compatible.
-
-- Functional Programming: The Object Parameter Paradigm aligns with the principles of functional programming, where functions operate on data as first-class citizens, promoting modularity and composability.
-
-Benefits of the Object Parameter Paradigm
-- Avoid Primitive Obsession: By treating parameters as objects, the framework avoids the common antipattern of "primitive obsession," where methods rely heavily on primitive data types.
-
-- Encapsulation: Object parameters encapsulate related data into cohesive units, enhancing code readability and maintainability.
-
-- Type Safety: Using objects promotes type safety and reduces the risk of runtime errors by enforcing type checking at compile time.
-
-- Support for Dependency Injection: Object parameters facilitate dependency injection by providing a clear mechanism for passing dependencies to methods and constructors.
-
-Adhering to the Object Parameter Paradigm ensures a consistent and robust approach to parameter passing within the OOPDI framework, promoting code quality, extensibility, and modularity.
+Both styles can be combined in the same class.
 
 ## Request Scope
-In the OOPDI (Object-Oriented Dependency Injection) framework, the Request Scope represents a scoped instance whose lifespan is tied to a single request. Unlike other scopes such as Global or Thread, where instances persist across multiple invocations, a Request Scoped Instance remains consistent throughout a call hierarchy within the context of a single request.
 
 ### Understanding Request Scope
-Contextual Lifespan: A Request Scoped Instance is created and managed within the scope of a specific request. This ensures that the instance remains relevant and consistent throughout the processing of that request.
 
-- Call Hierarchy Consistency: Regardless of the depth or complexity of the call hierarchy within a request, all components within that hierarchy share the same instance of the Request Scoped Object. This ensures consistent behavior and data integrity across all components involved in handling the request.
+A Request-scoped instance lives for exactly one outermost proxy call chain on the current thread. The framework uses a `ThreadLocal` with a call-depth counter. On every proxy method invocation:
 
-- Lifecycle Management: The OOPDI framework ensures that the Request Scoped Instance is instantiated at the beginning of the request processing and remains active until the completion of the request. Once the request is processed, the instance is typically discarded or made available for garbage collection.
+1. If no request scope exists on this thread yet, a new `InstancesState` is created and stored in the `ThreadLocal`.
+2. The call depth is incremented.
+3. The method executes (potentially triggering further proxy calls that reuse the same `InstancesState`).
+4. The call depth is decremented.
+5. When the depth returns to zero, the `ThreadLocal` is cleared and the instance is discarded.
 
-- Isolation Between Requests: Each new request initiates a new instance of the Request Scoped Object, ensuring isolation between different requests. This prevents data leakage or interference between concurrent requests and promotes a clean separation of concerns.
+All proxy calls within a single outermost call therefore share one instance of the REQUEST-scoped bean.
 
 ### Example Use Cases
-- Web Applications: In a web application context, a Request Scoped Instance may represent objects such as the current user session, request-specific configuration settings, or cached data relevant to the current request processing.
 
-- API Endpoints: When handling API requests, a Request Scoped Instance could encapsulate request parameters, authentication tokens, or transactional context specific to the API call being processed.
-
-- Batch Processing: In batch processing scenarios, a Request Scoped Instance may encapsulate context information or processing state relevant to a particular batch job or task execution.
+- **Unit of work**: Accumulate changes within one business operation and discard the state when the operation completes.
+- **Contextual data**: Carry request-specific state (e.g. current user, correlation ID) through a call chain without passing it as method parameters.
+- **Per-operation caching**: Cache computations that are only valid within one operation and should not bleed into the next.
 
 ### Benefits of Request Scope
-- Consistency: Ensures consistent behavior and data integrity within the scope of a single request, facilitating predictable and reliable request processing.
 
-- Contextual Relevance: Provides a mechanism for managing context-specific data or state within the context of a request, promoting encapsulation and modularity.
+- **Consistency**: All participants in a call chain see the same instance.
+- **Automatic cleanup**: No explicit lifecycle management required — the instance is discarded the moment the outermost call returns.
+- **Thread isolation**: Each thread has its own `ThreadLocal`, so concurrent call chains are fully isolated.
 
-- Resource Efficiency: Optimizes resource usage by limiting the lifespan of the instance to the duration of a single request, reducing memory overhead and potential resource contention.
+## Initialization with @PostConstruct
 
-### Implementation Considerations
-Lifecycle Management: Implementations of Request Scoped Instances should carefully manage their lifecycle to ensure proper initialization, usage, and cleanup within the context of each request.
+### Purpose and Benefits
 
-Concurrency Considerations: While Request Scoped Instances are typically isolated between requests, implementations should consider thread safety and concurrency issues when processing concurrent requests.
+`@PostConstruct` provides a hook for initialization logic that requires all injected fields to already be set. Construction via `new` only runs the constructor; field injection happens afterward. A `@PostConstruct` method is therefore the correct place to validate injected values, open connections, or pre-compute derived state.
 
-Dependency Injection: The OOPDI framework provides mechanisms for injecting Request Scoped Instances into components that require access to request-specific data or functionality.
+### Single @PostConstruct Method
 
-### Conclusion
-In the OOPDI framework, the Request Scope offers a powerful mechanism for managing context-specific data and ensuring consistency within the scope of a single request. By providing a clear and consistent lifecycle for request-scoped instances, the framework enables developers to build robust and scalable applications with enhanced modularity and encapsulation.
+Exactly one method per class may carry `@PostConstruct`. The method may declare parameters — each parameter is resolved as a managed bean and injected at call time, following the same rules as constructor parameter injection.
 
+```java
+@Injectable
+public class CacheManager {
 
-## Code Examples
+    @InjectInstance
+    private DataSource dataSource;
 
-In this section, we provide practical code examples that demonstrate how to use OOPDI effectively in various scenarios. These examples serve as quick guides to help you get started with the framework in your own projects. Feel free to explore and adapt them to your specific use cases.
+    @PostConstruct
+    public void warmUp() {
+        // dataSource is fully injected here
+    }
+}
+```
 
-### Basic Dependency Injection
+### MultiplePostConstructMethodsException
 
-- **Injecting a Singleton**: Show how to use the `@Injectable` annotation to inject a singleton instance of a class.
-  
-- **Thread-Scoped Dependency**: Demonstrate how to create and manage thread-scoped dependencies using OOPDI.
-  
-- **Local Scope Usage**: Illustrate the use of local-scoped dependencies within a specific context or method.
-  
-- **Request Scope in Action**: Showcase how to leverage request-scoped dependencies, including use cases beyond traditional HTTP requests.
+If more than one method in a class is annotated with `@PostConstruct`, the framework throws `MultiplePostConstructMethodsException` at initialization time. Ensure only a single method carries this annotation per class.
 
-### Advanced Dependency Management
+## Usage Guidelines
 
-- **Managing Collections with `@InjectSet`**: Explore how to use `@InjectSet` to manage and inject sets of dependencies, even when no matching classes are found.
+### Enforcing Encapsulation
 
-- **Fine-Grained Dependency Injection**: Dive into examples of using `@InjectInstance` for precise, type-specific dependency injection.
+Obtain instances only through the `OOPDI` container or through injected proxy references. Never construct managed classes directly with `new` — doing so bypasses scope management, field injection, and post-construction.
 
-### Object Initialization
+### Controlled Scope
 
-- **Using `@PostConstruct`**: Walk through the process of initializing objects using the `@PostConstruct` annotation. Highlight how it simplifies object setup and configuration.
+Choose scopes deliberately:
 
-### Scoping Strategies
+- Use `GLOBAL` for stateless services and shared configuration.
+- Use `THREAD` for per-thread state in multi-threaded applications.
+- Use `LOCAL` when you want a fresh instance on every interaction from a collaborator.
+- Use `REQUEST` when a consistent instance must be shared across an entire call chain but discarded afterward.
 
-- **Global Scope Example**: Provide a scenario where global-scoped dependencies are essential and demonstrate their usage.
+### Object Lifecycle Management
 
-- **Thread Scope in Multithreading**: Showcase thread-scoped dependencies in a multi-threaded environment to ensure thread safety.
+Avoid holding raw references to real objects. Always interact with the injected proxy. This ensures that scope semantics are respected — particularly for LOCAL and REQUEST scopes, where the real object changes between invocations.
 
-- **Local Scope Use Case**: Describe a use case where local-scoped dependencies provide controlled, short-lived functionality.
+## Advanced Topics
 
-- **Custom Scopes (if applicable)**: If you have plans to implement custom scopes in the future, you can add examples demonstrating their usage here.
+### Circular Dependencies
 
-### Advanced Features and Best Practices
+Constructor injection cycles are detected at instantiation time. If class A's constructor requires B and B's constructor requires A, the framework throws `CannotInject` with a message identifying the cycle.
 
-- **Circular Dependency Resolution**: Demonstrate how OOPDI resolves circular dependencies to maintain object integrity.
+Field injection does not produce construction cycles because the real object is instantiated before its fields are processed. A circular field-injection graph is therefore safe.
 
-- **Testing Strategies**: Present strategies for testing classes and dependencies managed by OOPDI effectively.
+### Profiles
 
-- **Error Handling**: Illustrate best practices for handling exceptions and errors when working with the framework.
+Profiles allow different implementations of the same base type to be active in different environments. Pass active profile names to the `OOPDI` constructor:
 
-These code examples aim to provide practical insights into using OOPDI in your projects. We encourage you to explore these examples, adapt them to your specific requirements, and leverage the full potential of OOPDI for efficient dependency management.
+```java
+OOPDI<Root> container = new OOPDI<>(Root.class, "production");
+```
+
+A class with no `profiles` declared is always active. A class with one or more profiles declared is only active when at least one of its profiles matches an active profile. If multiple concrete subclasses of the same type are active after profile filtering, `MultipleClassesLeftAfterFiltering` is thrown. If none are active, `NoClassesLeftAfterFiltering` is thrown.
+
+```java
+@Injectable(profiles = {"production"})
+public class ProductionDataSource extends DataSource { ... }
+
+@Injectable(profiles = {"test"})
+public class InMemoryDataSource extends DataSource { ... }
+```
+
+### Handling Errors and Exceptions
+
+| Exception | Cause |
+|-----------|-------|
+| `NoClassesLeftAfterFiltering` | No non-abstract `@Injectable` subclass found for a requested type after profile filtering. |
+| `MultipleClassesLeftAfterFiltering` | More than one concrete `@Injectable` subclass matched after profile filtering. |
+| `MultipleConstructors` | A managed class declares more than one constructor. |
+| `MultiplePostConstructMethods` | A class declares more than one `@PostConstruct` method. |
+| `CannotInject` | A field or constructor dependency could not be injected — typically wraps `NoClassesLeftAfterFiltering`, `MultipleClassesLeftAfterFiltering`, or a constructor cycle. |
+| `NoRequestScopeAvailable` | A REQUEST-scoped bean's method was called outside any proxy call chain (i.e. directly on the real object). |
+| `UnderConstruction` | Internal sentinel for constructor cycle detection; surfaced as `CannotInject`. |
+| `RuntimeException` (variable injection) | A required environment variable or system property key was not found. |
 
