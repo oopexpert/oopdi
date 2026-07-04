@@ -1,6 +1,8 @@
 package de.oopexpert.oopdi;
 
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Assertions;
@@ -11,6 +13,7 @@ import de.oopexpert.teststructure.ClassB;
 import de.oopexpert.teststructure.ClassB1;
 import de.oopexpert.teststructure.ClassC;
 import de.oopexpert.teststructure.ClassD;
+import de.oopexpert.teststructure.ClassGlobalRace;
 import de.oopexpert.teststructure.ClassMissingVar;
 import de.oopexpert.teststructure.ClassRoot;
 
@@ -170,6 +173,63 @@ class TestOOPDI {
 
 		Assertions.assertEquals(EXPECTED, instance.getCounter());
 		
+	}
+
+	/**
+	 * Demonstrates the GLOBAL scope check-then-act race condition in getOrCreateInjectable.
+	 *
+	 * Race window:
+	 *   1. Thread 1 checks instanceExists() → false
+	 *   2. Thread 1 enters createInstance(), acquires the scopedMap lock, runs the
+	 *      constructor (which sleeps 200 ms while holding the lock)
+	 *   3. Thread 2 checks instanceExists() → still false (Thread 1 hasn't called put() yet)
+	 *   4. Thread 2 tries createInstance() → blocks on the scopedMap lock
+	 *   5. Thread 1 wakes, releases lock, calls put(instance1)
+	 *   6. Thread 2 acquires lock, creates instance2, calls put(instance2) — overwrites instance1
+	 *
+	 * NOTE: cglib calls the superclass constructor when creating the proxy object itself,
+	 * so instanceCount is reset AFTER proxy creation to only count real-object constructions.
+	 *
+	 * Expected correct behaviour : instanceCount == 1 (one real object created)
+	 * Actual buggy behaviour     : instanceCount == 2 (two real objects created)
+	 *
+	 * This test FAILS on the unfixed code to expose the bug.
+	 */
+	@Test
+	void testGlobalScopeRaceConditionProducesDuplicateInstances() throws InterruptedException {
+
+		CountDownLatch constructorStartedLatch = new CountDownLatch(1);
+
+		OOPDI<ClassGlobalRace> oopdi = new OOPDI<>(ClassGlobalRace.class);
+		ClassGlobalRace proxy = oopdi.getInstance(ClassGlobalRace.class);
+
+		// Reset after proxy creation: cglib calls the superclass constructor when
+		// building the proxy subclass, which would otherwise pollute the count.
+		ClassGlobalRace.instanceCount.set(0);
+		ClassGlobalRace.constructorStartedLatch = constructorStartedLatch;
+
+		// Thread 1 triggers real object construction; its constructor signals when it
+		// has entered (and is holding the scopedMap lock) then sleeps for 200 ms.
+		Thread thread1 = new Thread(() -> proxy.getCount());
+		thread1.start();
+
+		// Wait until Thread 1 is inside the constructor (lock held, put() not yet called).
+		constructorStartedLatch.await(5, TimeUnit.SECONDS);
+
+		// Thread 2 now calls the proxy. instanceExists() is still false because Thread 1
+		// has not yet called put(). Thread 2 passes the check, then blocks on the
+		// scopedMap lock. When Thread 1 releases it, Thread 2 creates a second instance.
+		Thread thread2 = new Thread(() -> proxy.getCount());
+		thread2.start();
+
+		thread1.join(5000);
+		thread2.join(5000);
+
+		// Correct behaviour: exactly 1 real object created.
+		// Buggy behaviour: 2 real objects created — this assertion fails, exposing the race.
+		Assertions.assertEquals(1, ClassGlobalRace.instanceCount.get(),
+				"Race condition: both threads passed instanceExists=false before any put() " +
+				"and each created a separate real object");
 	}
 
 	@Test
