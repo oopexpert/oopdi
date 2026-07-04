@@ -25,6 +25,8 @@ import de.oopexpert.teststructure.ClassPreDestroyChild;
 import de.oopexpert.teststructure.ClassRequestScenario;
 import de.oopexpert.teststructure.ClassRequestState;
 import de.oopexpert.teststructure.ClassRoot;
+import de.oopexpert.teststructure.ClassVariableInvalidFormat;
+import de.oopexpert.teststructure.ClassVariableMatrix;
 import de.oopexpert.teststructure.ClassWithPreDestroy;
 
 class TestOOPDI {
@@ -480,6 +482,62 @@ class TestOOPDI {
 			ClassParallelInitTracker.getMaxConcurrentInits() >= 2,
 			"Per-class lock granularity should allow parallel initialization of unrelated beans"
 		);
+
+	}
+
+	@Test
+	void testInjectVariableParsesExtendedNumericTypes() {
+
+		System.setProperty("matrix.long", "9000000000");
+		System.setProperty("matrix.long.boxed", "9000000001");
+		System.setProperty("matrix.short", "32000");
+		System.setProperty("matrix.short.boxed", "31999");
+		System.setProperty("matrix.float", "3.5");
+		System.setProperty("matrix.float.boxed", "4.5");
+		System.setProperty("matrix.double", "7.25");
+		System.setProperty("matrix.double.boxed", "8.25");
+
+		try {
+			OOPDI<ClassVariableMatrix> oopdi = new OOPDI<>(ClassVariableMatrix.class);
+			ClassVariableMatrix instance = oopdi.getInstance(ClassVariableMatrix.class);
+
+			Assertions.assertEquals(9000000000L, instance.getLongValue());
+			Assertions.assertEquals(Long.valueOf(9000000001L), instance.getLongBoxedValue());
+			Assertions.assertEquals((short) 32000, instance.getShortValue());
+			Assertions.assertEquals(Short.valueOf((short) 31999), instance.getShortBoxedValue());
+			Assertions.assertEquals(3.5f, instance.getFloatValue());
+			Assertions.assertEquals(Float.valueOf(4.5f), instance.getFloatBoxedValue());
+			Assertions.assertEquals(7.25d, instance.getDoubleValue());
+			Assertions.assertEquals(Double.valueOf(8.25d), instance.getDoubleBoxedValue());
+		} finally {
+			System.clearProperty("matrix.long");
+			System.clearProperty("matrix.long.boxed");
+			System.clearProperty("matrix.short");
+			System.clearProperty("matrix.short.boxed");
+			System.clearProperty("matrix.float");
+			System.clearProperty("matrix.float.boxed");
+			System.clearProperty("matrix.double");
+			System.clearProperty("matrix.double.boxed");
+		}
+
+	}
+
+	@Test
+	void testInjectVariableInvalidNumericFormatThrows() {
+
+		System.setProperty("matrix.invalid.int", "notANumber");
+
+		try {
+			OOPDI<ClassVariableInvalidFormat> oopdi = new OOPDI<>(ClassVariableInvalidFormat.class);
+			ClassVariableInvalidFormat instance = oopdi.getInstance(ClassVariableInvalidFormat.class);
+
+			RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::getInvalidInt,
+				"Invalid numeric values should fail during injection");
+			Assertions.assertTrue(ex.getCause() instanceof NumberFormatException,
+				"NumberFormatException should be preserved as the cause");
+		} finally {
+			System.clearProperty("matrix.invalid.int");
+		}
 
 	}
 
