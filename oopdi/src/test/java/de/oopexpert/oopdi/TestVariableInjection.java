@@ -1,5 +1,7 @@
 package de.oopexpert.oopdi;
 
+import java.util.Map;
+
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -106,16 +108,16 @@ class TestVariableInjection {
     @Test
     void testInjectVariableParsesExtendedNumericTypes() {
 
-        System.setProperty("matrix.long", "9000000000");
-        System.setProperty("matrix.long.boxed", "9000000001");
-        System.setProperty("matrix.short", "32000");
-        System.setProperty("matrix.short.boxed", "31999");
-        System.setProperty("matrix.float", "3.5");
-        System.setProperty("matrix.float.boxed", "4.5");
-        System.setProperty("matrix.double", "7.25");
-        System.setProperty("matrix.double.boxed", "8.25");
-
-        try {
+        try (TestSystemProperties.Scope ignored = TestSystemProperties.withProperties(Map.of(
+            "matrix.long", "9000000000",
+            "matrix.long.boxed", "9000000001",
+            "matrix.short", "32000",
+            "matrix.short.boxed", "31999",
+            "matrix.float", "3.5",
+            "matrix.float.boxed", "4.5",
+            "matrix.double", "7.25",
+            "matrix.double.boxed", "8.25"
+        ))) {
             OOPDI<ClassVariableMatrix> oopdi = new OOPDI<>(ClassVariableMatrix.class);
             ClassVariableMatrix instance = oopdi.getInstance(ClassVariableMatrix.class);
 
@@ -127,15 +129,6 @@ class TestVariableInjection {
             Assertions.assertEquals(Float.valueOf(4.5f), instance.getFloatBoxedValue());
             Assertions.assertEquals(7.25d, instance.getDoubleValue());
             Assertions.assertEquals(Double.valueOf(8.25d), instance.getDoubleBoxedValue());
-        } finally {
-            System.clearProperty("matrix.long");
-            System.clearProperty("matrix.long.boxed");
-            System.clearProperty("matrix.short");
-            System.clearProperty("matrix.short.boxed");
-            System.clearProperty("matrix.float");
-            System.clearProperty("matrix.float.boxed");
-            System.clearProperty("matrix.double");
-            System.clearProperty("matrix.double.boxed");
         }
 
     }
@@ -143,9 +136,9 @@ class TestVariableInjection {
     @Test
     void testInjectVariableInvalidNumericFormatThrows() {
 
-        System.setProperty("matrix.invalid.int", "notANumber");
-
-        try {
+        try (TestSystemProperties.Scope ignored = TestSystemProperties.withProperties(Map.of(
+            "matrix.invalid.int", "notANumber"
+        ))) {
             OOPDI<ClassVariableInvalidFormat> oopdi = new OOPDI<>(ClassVariableInvalidFormat.class);
             ClassVariableInvalidFormat instance = oopdi.getInstance(ClassVariableInvalidFormat.class);
 
@@ -153,8 +146,6 @@ class TestVariableInjection {
                 "Invalid numeric values should fail during injection");
             Assertions.assertTrue(ex.getCause() instanceof NumberFormatException,
                 "NumberFormatException should be preserved as the cause");
-        } finally {
-            System.clearProperty("matrix.invalid.int");
         }
 
     }

@@ -94,42 +94,19 @@ class TestRequestAndConcurrency {
         ClassRequestScenario scenario = oopdi.getInstance(ClassRequestScenario.class);
         ClassRequestState.resetCounter();
 
-        CountDownLatch start = new CountDownLatch(1);
-        CountDownLatch done = new CountDownLatch(2);
         AtomicInteger idThreadOne = new AtomicInteger(-1);
         AtomicInteger idThreadTwo = new AtomicInteger(-1);
 
-        Thread t1 = new Thread(() -> {
-            try {
-                start.await();
-                ClassRequestScenario.Result result = scenario.execute(111, false);
-                idThreadOne.set(result.getIdInScenario());
-                Assertions.assertEquals(111, result.getReadFromReader());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } finally {
-                done.countDown();
-            }
-        });
+        ConcurrentTestSupport.runTwoWorkers(() -> {
+            ClassRequestScenario.Result result = scenario.execute(111, false);
+            idThreadOne.set(result.getIdInScenario());
+            Assertions.assertEquals(111, result.getReadFromReader());
+        }, () -> {
+            ClassRequestScenario.Result result = scenario.execute(222, false);
+            idThreadTwo.set(result.getIdInScenario());
+            Assertions.assertEquals(222, result.getReadFromReader());
+        }, 5, TimeUnit.SECONDS);
 
-        Thread t2 = new Thread(() -> {
-            try {
-                start.await();
-                ClassRequestScenario.Result result = scenario.execute(222, false);
-                idThreadTwo.set(result.getIdInScenario());
-                Assertions.assertEquals(222, result.getReadFromReader());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } finally {
-                done.countDown();
-            }
-        });
-
-        t1.start();
-        t2.start();
-        start.countDown();
-
-        Assertions.assertTrue(done.await(5, TimeUnit.SECONDS), "Worker threads did not finish in time");
         Assertions.assertNotEquals(idThreadOne.get(), idThreadTwo.get(),
             "REQUEST scope instances must be isolated across threads");
 
@@ -144,34 +121,15 @@ class TestRequestAndConcurrency {
 
         ClassParallelInitTracker.resetAndEnable();
 
-        CountDownLatch start = new CountDownLatch(1);
-        CountDownLatch done = new CountDownLatch(2);
-
-        Thread t1 = new Thread(() -> {
+        Thread workers = new Thread(() -> {
             try {
-                start.await();
-                beanA.touch();
+                ConcurrentTestSupport.runTwoWorkers(beanA::touch, beanB::touch, 5, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-            } finally {
-                done.countDown();
             }
         });
 
-        Thread t2 = new Thread(() -> {
-            try {
-                start.await();
-                beanB.touch();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } finally {
-                done.countDown();
-            }
-        });
-
-        t1.start();
-        t2.start();
-        start.countDown();
+        workers.start();
 
         Assertions.assertTrue(
             ClassParallelInitTracker.awaitBothStarted(5, TimeUnit.SECONDS),
@@ -179,7 +137,7 @@ class TestRequestAndConcurrency {
         );
 
         ClassParallelInitTracker.releaseConstructors();
-        Assertions.assertTrue(done.await(5, TimeUnit.SECONDS), "Worker threads did not finish in time");
+        workers.join(5000);
         ClassParallelInitTracker.disable();
 
         Assertions.assertTrue(
