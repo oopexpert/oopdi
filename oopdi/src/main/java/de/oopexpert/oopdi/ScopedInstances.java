@@ -3,6 +3,8 @@ package de.oopexpert.oopdi;
 import static java.lang.Thread.currentThread;
 import static java.util.Collections.synchronizedMap;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Map;
 import java.util.WeakHashMap;
 
@@ -22,6 +24,15 @@ public class ScopedInstances {
 		}
 		
 		return threadInstanceMaps.get(currentThread());
+	}
+
+	public Collection<InstancesState> allInstanceStates() {
+		Collection<InstancesState> all = new ArrayList<>();
+		all.add(globalInstances);
+		synchronized (threadInstanceMaps) {
+			all.addAll(threadInstanceMaps.values());
+		}
+		return all;
 	}
 
 }

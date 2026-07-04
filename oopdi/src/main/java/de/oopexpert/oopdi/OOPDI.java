@@ -27,5 +27,9 @@ public class OOPDI<T> {
 	public <T> T getInstance(Class<T> clazz) {
 		return getContext().getOrCreateInstance(clazz);
     }
-	
+
+	public void shutdown() {
+		getContext().shutdown();
+	}
+
 }
