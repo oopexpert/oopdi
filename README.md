@@ -288,6 +288,10 @@ If more than one method in a class is annotated with `@PostConstruct`, the frame
 
 Obtain instances only through the `OOPDI` container or through injected proxy references. Never construct managed classes directly with `new` — doing so bypasses scope management, field injection, and post-construction.
 
+### Self-Invocation Bypasses the Proxy
+
+This is standard Java proxy behavior (the same caveat applies to Spring, CDI, etc.), but it is worth stating explicitly: calling `this.someMethod()` from *inside* a managed bean invokes the real object directly, not the cglib proxy. Scope semantics that are enforced at the proxy layer — a fresh instance per call for `LOCAL`, call-depth tracking for `REQUEST` — do **not** apply to such self-invocations. If a method needs proxy-level behavior on every call (e.g. a fresh `LOCAL` instance), it must be called through an injected reference to itself or through the container, not via `this`.
+
 ### Controlled Scope
 
 Choose scopes deliberately:
