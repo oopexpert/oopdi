@@ -7,6 +7,8 @@ import de.oopexpert.teststructure.ClassA;
 import de.oopexpert.teststructure.ClassPostConstructChild;
 import de.oopexpert.teststructure.ClassPostConstructWithParameters;
 import de.oopexpert.teststructure.ClassPreDestroyChild;
+import de.oopexpert.teststructure.ClassPreDestroyOrderDependent;
+import de.oopexpert.teststructure.ClassPreDestroyOrderLog;
 import de.oopexpert.teststructure.ClassWithPreDestroy;
 
 class TestLifecycleHooks {
@@ -63,6 +65,22 @@ class TestLifecycleHooks {
 
         Assertions.assertTrue(instance.isBaseDestroyed(),
             "@PreDestroy method declared in abstract superclass should be called on shutdown");
+
+    }
+
+    @Test
+    void testPreDestroyIsInvokedInReverseCreationOrder() {
+
+        OOPDI<ClassPreDestroyOrderDependent> oopdi = new OOPDI<>(ClassPreDestroyOrderDependent.class);
+
+        // Resolving the dependent forces its dependency to be created first.
+        oopdi.getInstance(ClassPreDestroyOrderDependent.class).ping();
+        ClassPreDestroyOrderLog log = oopdi.getInstance(ClassPreDestroyOrderLog.class);
+
+        oopdi.shutdown();
+
+        Assertions.assertEquals(java.util.List.of("dependent", "dependency"), log.getOrder(),
+            "@PreDestroy should run in reverse creation order so dependents are destroyed before their dependencies");
 
     }
 

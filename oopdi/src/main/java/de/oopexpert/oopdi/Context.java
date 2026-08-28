@@ -91,6 +91,12 @@ public class Context<T> {
         typeParsers.put(float.class, Float::parseFloat);
         typeParsers.put(Double.class, Double::valueOf);
         typeParsers.put(double.class, Double::parseDouble);
+        typeParsers.put(Boolean.class, Boolean::valueOf);
+        typeParsers.put(boolean.class, Boolean::parseBoolean);
+        typeParsers.put(Byte.class, Byte::valueOf);
+        typeParsers.put(byte.class, Byte::parseByte);
+        typeParsers.put(Character.class, (String s) -> s.charAt(0));
+        typeParsers.put(char.class, (String s) -> s.charAt(0));
         // Add additional types as needed
     }
 
@@ -164,7 +170,7 @@ public class Context<T> {
 
 	private <A> void checkImmediateInstantiationConfiguration(Class<A> c) {
 		if (ProxyManager.isImmediateInstantiationRequested(c) && !Scope.isImmediateInstantiationPossible(c)) {
-        	throw new RuntimeException("Missconfiguration of Class " + c.getName() + ". It is demanded to be intantiated immediately but this is only possible with scopes of GLOBAL and THREAD.");
+        	throw new RuntimeException("Misconfiguration of class " + c.getName() + ": it is configured to be instantiated immediately, but this is only possible with scopes GLOBAL and THREAD.");
 	    }
 	}
 
@@ -286,7 +292,7 @@ public class Context<T> {
 
 	public void shutdown() {
 		for (InstancesState state : scopedInstances.allInstanceStates()) {
-			for (Object instance : state.allInstances()) {
+			for (Object instance : state.allInstancesInReverseCreationOrder()) {
 				invokePreDestroyMethod(instance);
 			}
 		}
