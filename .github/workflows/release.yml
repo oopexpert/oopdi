@@ -21,11 +21,15 @@ jobs:
           fetch-depth: 0 # Ensures all tags are fetched
 
       - name: Fetch tags
-        run: git fetch --tags
+        run: git fetch --tags --force
 
       - name: Checkout specific tag
         run: |
-          git checkout ${{ github.event.inputs.tag_name }}
+          git rev-parse --verify --quiet "refs/tags/${{ github.event.inputs.tag_name }}" || {
+            echo "::error::Tag '${{ github.event.inputs.tag_name }}' does not exist in this repository. Create and push the tag first (e.g. 'git tag ${{ github.event.inputs.tag_name }} && git push origin ${{ github.event.inputs.tag_name }}'), then re-run this workflow."
+            exit 1
+          }
+          git checkout "refs/tags/${{ github.event.inputs.tag_name }}"
 
       - name: Set up JDK
         uses: actions/setup-java@v4
