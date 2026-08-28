@@ -5,10 +5,54 @@
 ```powershell
 $env:JAVA_HOME = "C:\Daten\Programmierung\environments\jdk-21.0.5+11"
 $env:PATH = "$env:JAVA_HOME\bin;C:\Daten\Programmierung\environments\apache-maven-3.9.15\bin;$env:PATH"
+cd oopdi
 mvn test
 ```
 
 Test values are injected by the Surefire plugin (see `pom.xml` `environmentVariables` / `systemPropertyVariables`). Do not rely on the developer machine having these set.
+
+### Running tests in Eclipse
+Eclipse's built-in JUnit launcher does not read Surefire's `environmentVariables`/`systemPropertyVariables` from `pom.xml`. To run tests successfully in Eclipse, configure the Run Configuration manually:
+- VM arguments: `--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED -DdbUsername=dbUser1 -Dcounter=4`
+- Environment variable: `dbUrl=jdbc://mysql:userdb`
+
+Without the `--add-opens` flags, cglib proxy creation can also fail under Java 21's stricter reflection access rules.
+
+## Copilot Self-Maintenance
+
+When a change introduces a verified repository-specific insight (for example: fixed behavior, scope rule clarification, lifecycle constraint, or test reliability rule), update GitHub Copilot helper docs automatically in the same task.
+
+Required behavior:
+- Update this file (`.github/copilot-instructions.md`) when the insight changes implementation guidance, architecture understanding, or testing guidance.
+- Update repository memory notes (`/memories/repo/oopdi.md`) when the insight is useful for future sessions and command execution.
+- Only record verified facts (code + tests), never speculation.
+- Keep updates concise and additive; prefer small targeted edits.
+- If no new insight was discovered, do not edit helper files.
+
+Recent verified insights that must stay reflected in helper docs:
+- `immediate=true` is invalid for THREAD, LOCAL, and REQUEST scopes.
+- Misconfiguration for these scope/immediate combinations is observable as a runtime failure when the proxy-invoked method is executed.
+- GLOBAL scope singleton behavior is container-local; different `OOPDI` instances do not share GLOBAL bean instances.
+
+Copilot must continuously validate its own reasoning against verified project facts.  
+Verified facts are exclusively those derived from:
+- the actual code
+- the test suite
+- the architectural rules defined in this file
+- existing repository memory entries
+
+When Copilot detects that a previous assumption, explanation, or implementation
+conflicts with verified facts, it must:
+
+- correct the reasoning immediately
+- update the current answer accordingly
+- propose minimal, targeted code or test changes (never broad rewrites)
+- update helper docs only when the corrected insight changes implementation guidance,
+  architecture understanding, or testing rules
+
+Self-correction must never rely on speculation.  
+Tests and code are the single source of truth.
+
 
 ## Project Layout
 
@@ -17,7 +61,7 @@ oopdi/          ← Maven module root (pom.xml here)
 src/main/java/de/oopexpert/oopdi/   ← framework source
 src/test/java/de/oopexpert/oopdi/   ← JUnit 5 tests
 src/test/java/de/oopexpert/teststructure/  ← fixture classes used by tests
-../Readme.md    ← project README (one level above the Maven module)
+../README.md    ← project README (one level above the Maven module)
 ```
 
 ## Architecture
@@ -57,18 +101,22 @@ The `constructorInjection` set (cycle detection) lives inside `InstancesState` a
 
 `ScopedInstances.threadInstanceMaps` uses `WeakHashMap` so entries are GC'd when threads die (previously a memory leak in thread-pool environments).
 
+`ClassesResolver.determineRelevantClass` caches its result per input class in a `ConcurrentHashMap` (`relevantClassCache`), avoiding a full classpath re-scan on every bean resolution. The cache is scoped to the `ClassesResolver` instance (one per `OOPDI` container), so different containers/profiles never share cached results.
+
+**Self-invocation bypasses the proxy**: calling `this.someMethod()` from inside a managed bean invokes the real object directly, not the cglib proxy — standard Java/cglib proxy behavior (same caveat in Spring/CDI). LOCAL's "fresh instance per call" and REQUEST's call-depth tracking do not apply to such calls. Documented in [README.md](../README.md).
+
 ## Annotations
 
 - `@Injectable(scope, immediate, profiles)` — marks a class as managed
 - `@InjectInstance` — field injection of a single managed bean
 - `@InjectSet(hint=X.class)` — field injection of `Set<X>` (all active concrete subclasses or implementations)
-- `@InjectVariable(key, source, optional=false, defaultValue="")` — injects env var (`SYSTEM`) or system property (`PARAMETER`); missing key throws unless `optional=true` or `defaultValue` is set
+- `@InjectVariable(key, source, optional=false, defaultValue="")` — injects env var (`SYSTEM`) or system property (`PARAMETER`); missing key throws unless `optional=true` or `defaultValue` is set. Supported field types for automatic parsing: `Integer`, `Long`, `Short`, `Float`, `Double`, `Boolean`, `Byte`, `Character` (primitive and boxed forms); anything else is assigned as `String`.
 - `@PostConstruct` — single post-injection init method; parameters are injected; traverses full superclass hierarchy
 - `@PreDestroy` — single cleanup method called by `OOPDI.shutdown()`; no parameters; traverses full superclass hierarchy
 
 ## Lifecycle
 
-`OOPDI.shutdown()` invokes `@PreDestroy` on all stored real instances (GLOBAL + all live THREAD states). LOCAL and REQUEST scopes have no persistent instances and are unaffected.
+`OOPDI.shutdown()` invokes `@PreDestroy` on all stored real instances (GLOBAL + all live THREAD states), in **reverse creation order** per scope (`InstancesState` stores instances in a `LinkedHashMap`; `allInstancesInReverseCreationOrder()` reverses insertion order). This ensures a dependent bean is destroyed before the dependency it was built on. LOCAL and REQUEST scopes have no persistent instances and are unaffected.
 
 `@PostConstruct` and `@PreDestroy` both traverse the full superclass hierarchy. Exactly one method total across the hierarchy is enforced for each.
 
