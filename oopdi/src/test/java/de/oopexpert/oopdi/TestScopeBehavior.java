@@ -105,7 +105,7 @@ class TestScopeBehavior {
 
         RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::ping,
             "THREAD scope with immediate=true should be rejected");
-        Assertions.assertTrue(ex.getMessage().contains("Missconfiguration"));
+        Assertions.assertTrue(ex.getMessage().contains("Misconfiguration"));
 
     }
 
@@ -117,7 +117,7 @@ class TestScopeBehavior {
 
         RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::ping,
             "LOCAL scope with immediate=true should be rejected");
-        Assertions.assertTrue(ex.getMessage().contains("Missconfiguration"));
+        Assertions.assertTrue(ex.getMessage().contains("Misconfiguration"));
 
     }
 
@@ -129,7 +129,7 @@ class TestScopeBehavior {
 
         RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::ping,
             "REQUEST scope with immediate=true should be rejected");
-        Assertions.assertTrue(ex.getMessage().contains("Missconfiguration"));
+        Assertions.assertTrue(ex.getMessage().contains("Misconfiguration"));
 
     }
 

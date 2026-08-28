@@ -48,7 +48,7 @@ public class ProxyManager {
             proxyClasses.put(proxiedObject.getClass(), clazz);
         } else {
             // More than one constructor defined, which is not allowed
-            throw new CannotInject("Multiple constructors found in class: " + clazz.getName());
+            throw new CannotInject("Multiple constructors found in class '" + clazz.getName() + "'. Exactly one constructor is required for dependency injection.");
         }
 
 		return proxiedObject;
