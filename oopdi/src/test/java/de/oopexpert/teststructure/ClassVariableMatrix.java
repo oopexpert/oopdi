@@ -31,6 +31,24 @@ public class ClassVariableMatrix {
     @InjectVariable(key = "matrix.double.boxed", source = VariableSource.PARAMETER)
     private Double doubleBoxedValue;
 
+    @InjectVariable(key = "matrix.boolean", source = VariableSource.PARAMETER)
+    private boolean booleanValue;
+
+    @InjectVariable(key = "matrix.boolean.boxed", source = VariableSource.PARAMETER)
+    private Boolean booleanBoxedValue;
+
+    @InjectVariable(key = "matrix.byte", source = VariableSource.PARAMETER)
+    private byte byteValue;
+
+    @InjectVariable(key = "matrix.byte.boxed", source = VariableSource.PARAMETER)
+    private Byte byteBoxedValue;
+
+    @InjectVariable(key = "matrix.char", source = VariableSource.PARAMETER)
+    private char charValue;
+
+    @InjectVariable(key = "matrix.char.boxed", source = VariableSource.PARAMETER)
+    private Character charBoxedValue;
+
     public long getLongValue() {
         return longValue;
     }
@@ -61,6 +79,30 @@ public class ClassVariableMatrix {
 
     public Double getDoubleBoxedValue() {
         return doubleBoxedValue;
+    }
+
+    public boolean getBooleanValue() {
+        return booleanValue;
+    }
+
+    public Boolean getBooleanBoxedValue() {
+        return booleanBoxedValue;
+    }
+
+    public byte getByteValue() {
+        return byteValue;
+    }
+
+    public Byte getByteBoxedValue() {
+        return byteBoxedValue;
+    }
+
+    public char getCharValue() {
+        return charValue;
+    }
+
+    public Character getCharBoxedValue() {
+        return charBoxedValue;
     }
 
 }

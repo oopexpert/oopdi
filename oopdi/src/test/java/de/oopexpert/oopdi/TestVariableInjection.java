@@ -108,15 +108,21 @@ class TestVariableInjection {
     @Test
     void testInjectVariableParsesExtendedNumericTypes() {
 
-        try (TestSystemProperties.Scope ignored = TestSystemProperties.withProperties(Map.of(
-            "matrix.long", "9000000000",
-            "matrix.long.boxed", "9000000001",
-            "matrix.short", "32000",
-            "matrix.short.boxed", "31999",
-            "matrix.float", "3.5",
-            "matrix.float.boxed", "4.5",
-            "matrix.double", "7.25",
-            "matrix.double.boxed", "8.25"
+        try (TestSystemProperties.Scope ignored = TestSystemProperties.withProperties(Map.ofEntries(
+            Map.entry("matrix.long", "9000000000"),
+            Map.entry("matrix.long.boxed", "9000000001"),
+            Map.entry("matrix.short", "32000"),
+            Map.entry("matrix.short.boxed", "31999"),
+            Map.entry("matrix.float", "3.5"),
+            Map.entry("matrix.float.boxed", "4.5"),
+            Map.entry("matrix.double", "7.25"),
+            Map.entry("matrix.double.boxed", "8.25"),
+            Map.entry("matrix.boolean", "true"),
+            Map.entry("matrix.boolean.boxed", "true"),
+            Map.entry("matrix.byte", "12"),
+            Map.entry("matrix.byte.boxed", "13"),
+            Map.entry("matrix.char", "x"),
+            Map.entry("matrix.char.boxed", "y")
         ))) {
             OOPDI<ClassVariableMatrix> oopdi = new OOPDI<>(ClassVariableMatrix.class);
             ClassVariableMatrix instance = oopdi.getInstance(ClassVariableMatrix.class);
@@ -129,6 +135,12 @@ class TestVariableInjection {
             Assertions.assertEquals(Float.valueOf(4.5f), instance.getFloatBoxedValue());
             Assertions.assertEquals(7.25d, instance.getDoubleValue());
             Assertions.assertEquals(Double.valueOf(8.25d), instance.getDoubleBoxedValue());
+            Assertions.assertTrue(instance.getBooleanValue());
+            Assertions.assertEquals(Boolean.TRUE, instance.getBooleanBoxedValue());
+            Assertions.assertEquals((byte) 12, instance.getByteValue());
+            Assertions.assertEquals(Byte.valueOf((byte) 13), instance.getByteBoxedValue());
+            Assertions.assertEquals('x', instance.getCharValue());
+            Assertions.assertEquals(Character.valueOf('y'), instance.getCharBoxedValue());
         }
 
     }
