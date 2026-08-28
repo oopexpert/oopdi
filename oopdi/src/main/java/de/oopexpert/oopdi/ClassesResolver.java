@@ -9,7 +9,9 @@ import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
@@ -29,14 +31,21 @@ public class ClassesResolver {
 	private String[] profiles;
 
 	private HashMap<Class<?>, Set<Class<?>>> componentSets;
-    
+
+	private final Map<Class<?>, Class<?>> relevantClassCache = new ConcurrentHashMap<>();
+
     public ClassesResolver(String... profiles) {
     	this.profiles = profiles;
     	this.componentSets = new HashMap<>();
     }
 
 	public <T> Class<T> determineRelevantClass(Class<T> c) {
-		
+
+		Class<?> cached = relevantClassCache.get(c);
+		if (cached != null) {
+			return (Class<T>) cached;
+		}
+
 		Set<Class<T>> filteredClasses = filter(getAllClassesInHierarchy(c));
 		
 		if (filteredClasses.isEmpty()) {
@@ -46,8 +55,10 @@ public class ClassesResolver {
 		if (filteredClasses.size() > 1) {
 			throw new MultipleClassesLeftAfterFiltering("Multiple concrete classes left after profile/non-abstract filtering class hierarchy of class '" + c.getName() + "'. Cannot decide object instantiation.");
 		}
-		
-		return filteredClasses.iterator().next();
+
+		Class<T> relevantClass = filteredClasses.iterator().next();
+		relevantClassCache.put(c, relevantClass);
+		return relevantClass;
 	}
 
 	private <T> Set<Class<T>> getAllClassesInHierarchy(Class<T> c) {
@@ -75,7 +86,7 @@ public class ClassesResolver {
 		    return classes;
 		    
 		} catch (ClassNotFoundException | IOException e) {
-			throw new RuntimeException(e);
+			throw new RuntimeException("Failed to scan classpath for subclasses of '" + parentClass.getName() + "' in package '" + packageName + "'", e);
 		}
 	}
 	
