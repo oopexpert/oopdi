@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0 # Ensures all tags are fetched
 
@@ -28,7 +28,7 @@ jobs:
           git checkout ${{ github.event.inputs.tag_name }}
 
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -49,5 +49,5 @@ jobs:
           body: |
             This is an automated release for ${{ github.event.inputs.tag_name }}.
           artifacts: |
-            target/*.jar # Adjust to the path of your built artifact
+            oopdi/target/*.jar
           token: ${{ secrets.GITHUB_TOKEN }}
