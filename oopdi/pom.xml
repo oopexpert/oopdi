@@ -14,9 +14,9 @@
 			<scope>test</scope>
 		</dependency>
 		<dependency>
-			<groupId>cglib</groupId>
-			<artifactId>cglib</artifactId>
-			<version>3.3.0</version>
+			<groupId>net.bytebuddy</groupId>
+			<artifactId>byte-buddy</artifactId>
+			<version>1.18.12</version>
 		</dependency>
 		<dependency>
 			<groupId>org.slf4j</groupId>
@@ -46,10 +46,6 @@
 				<artifactId>maven-surefire-plugin</artifactId>
 				<version>3.5.6</version>
 				<configuration>
-					<argLine>
-						--add-opens=java.base/java.lang=ALL-UNNAMED
-						--add-opens=java.base/java.util=ALL-UNNAMED
-					</argLine>
 					<environmentVariables>
 						<dbUrl>jdbc://mysql:userdb</dbUrl>
 					</environmentVariables>

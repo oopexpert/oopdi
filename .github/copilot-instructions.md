@@ -13,10 +13,10 @@ Test values are injected by the Surefire plugin (see `pom.xml` `environmentVaria
 
 ### Running tests in Eclipse
 Eclipse's built-in JUnit launcher does not read Surefire's `environmentVariables`/`systemPropertyVariables` from `pom.xml`. To run tests successfully in Eclipse, configure the Run Configuration manually:
-- VM arguments: `--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED -DdbUsername=dbUser1 -Dcounter=4`
+- VM arguments: `-DdbUsername=dbUser1 -Dcounter=4`
 - Environment variable: `dbUrl=jdbc://mysql:userdb`
 
-Without the `--add-opens` flags, cglib proxy creation can also fail under Java 21's stricter reflection access rules.
+(`--add-opens` flags are no longer needed since migration to Byte Buddy.)
 
 ## Copilot Self-Maintenance
 
@@ -66,12 +66,12 @@ src/test/java/de/oopexpert/teststructure/  ← fixture classes used by tests
 
 ## Architecture
 
-Every managed bean is wrapped in a **cglib subclass proxy** at registration time. The proxy intercepts all method calls, resolves the correct real instance for the bean's scope, and delegates. Callers always hold a proxy reference, never the real object directly.
+Every managed bean is wrapped in a **Byte Buddy subclass proxy** at registration time. The proxy intercepts all method calls, resolves the correct real instance for the bean's scope, and delegates. Callers always hold a proxy reference, never the real object directly.
 
 Key classes:
 - `OOPDI` — entry point; holds a single `Context` (lazy, synchronized)
 - `Context` — creates, injects, and manages real objects
-- `ProxyManager` — cglib proxy creation and registry; hosts the REQUEST-scope `ThreadLocal`
+- `ProxyManager` — Byte Buddy proxy creation and registry; hosts the REQUEST-scope `ThreadLocal`
 - `ScopedInstances` — maps `Scope → InstancesState`; THREAD scope keyed by `Thread` object
 - `InstancesState` — stores instances and construction-cycle sentinel for one scope/thread slot
 - `ClassesResolver` — classpath scan to find concrete `@Injectable` subclasses; profile filtering
@@ -103,7 +103,7 @@ The `constructorInjection` set (cycle detection) lives inside `InstancesState` a
 
 `ClassesResolver.determineRelevantClass` caches its result per input class in a `ConcurrentHashMap` (`relevantClassCache`), avoiding a full classpath re-scan on every bean resolution. The cache is scoped to the `ClassesResolver` instance (one per `OOPDI` container), so different containers/profiles never share cached results.
 
-**Self-invocation bypasses the proxy**: calling `this.someMethod()` from inside a managed bean invokes the real object directly, not the cglib proxy — standard Java/cglib proxy behavior (same caveat in Spring/CDI). LOCAL's "fresh instance per call" and REQUEST's call-depth tracking do not apply to such calls. Documented in [README.md](../README.md).
+**Self-invocation bypasses the proxy**: calling `this.someMethod()` from inside a managed bean invokes the real object directly, not the Byte Buddy proxy — standard Java proxy behavior (same caveat in Spring/CDI). LOCAL's "fresh instance per call" and REQUEST's call-depth tracking do not apply to such calls. Documented in [README.md](../README.md).
 
 ## Annotations
 
@@ -124,7 +124,7 @@ The `constructorInjection` set (cycle detection) lives inside `InstancesState` a
 
 Bean creation is logged at `DEBUG` level via SLF4J (`Context` logger). `slf4j-api` is a `provided` dependency — consumers must supply a backend. `slf4j-simple` is `test`-scoped for the test JVM.
 
-- Managed classes must not be `final` (cglib requires subclassing)
+- Managed classes must not be `final` (Byte Buddy requires subclassing)
 - Exactly one constructor per managed class — multiple constructors throw `MultipleConstructors`
 - Exactly one `@PostConstruct` per class hierarchy — multiple throw `MultiplePostConstructMethods`
 - Exactly one `@PreDestroy` per class hierarchy — multiple throw `RuntimeException`

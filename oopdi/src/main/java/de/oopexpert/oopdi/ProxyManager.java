@@ -1,5 +1,6 @@
 package de.oopexpert.oopdi;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
@@ -8,9 +9,10 @@ import java.util.function.Supplier;
 import de.oopexpert.oopdi.annotation.Injectable;
 import de.oopexpert.oopdi.exception.CannotInject;
 import de.oopexpert.oopdi.exception.NoRequestScopeAvailable;
-import net.sf.cglib.proxy.Enhancer;
-import net.sf.cglib.proxy.MethodInterceptor;
-import net.sf.cglib.proxy.MethodProxy;
+import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
+import net.bytebuddy.implementation.InvocationHandlerAdapter;
+import net.bytebuddy.matcher.ElementMatchers;
 
 public class ProxyManager {
 
@@ -29,34 +31,26 @@ public class ProxyManager {
 			}
 			return (T) proxies.get(nonProxyClass);
 		}
-		
 	}
 
 	private <T> T proxy(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
-		
+
 		java.lang.reflect.Constructor<?>[] constructors = clazz.getDeclaredConstructors();
 
 		T proxiedObject;
-				
+
         if (constructors.length == 0) {
-            // No constructors defined, use default constructor if available
             proxiedObject = createProxyWithDefaultConstructor(clazz, realObjectCreator);
             proxyClasses.put(proxiedObject.getClass(), clazz);
         } else if (constructors.length == 1) {
-            // One constructor is defined
             proxiedObject = createProxyWithSingleConstructor(clazz, constructors[0], realObjectCreator);
             proxyClasses.put(proxiedObject.getClass(), clazz);
         } else {
-            // More than one constructor defined, which is not allowed
             throw new CannotInject("Multiple constructors found in class '" + clazz.getName() + "'. Exactly one constructor is required for dependency injection.");
         }
 
 		return proxiedObject;
 	}
-
-	private <T> T createProxyWithDefaultConstructor(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
-        return (T) createEnhancer(clazz, realObjectCreator).create();
-    }
 
     private static final ThreadLocal<InstancesState> requestScope = new ThreadLocal<>();
 
@@ -67,37 +61,57 @@ public class ProxyManager {
 		}
 		return instanceState;
 	}
-	
-	private <T> Enhancer createEnhancer(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
-		
-		Enhancer enhancer = new Enhancer();
-        enhancer.setSuperclass(clazz);
-        
-        Supplier<T> realObjectSupplier;
-        
-        if (isImmediateInstantiationRequested(clazz) && Scope.isImmediateInstantiationPossible(clazz)) {
-			T realObject = realObjectCreator.apply(clazz);
-        	realObjectSupplier = () -> realObject;
-        } else {
-        	realObjectSupplier = () -> realObjectCreator.apply(clazz);
-        }
-        
-        enhancer.setCallback((MethodInterceptor) (obj, method, args, proxy) -> intercept(realObjectSupplier, method, args, proxy, realObjectSupplier));
-        
-		return enhancer;
+
+	private <T> Class<? extends T> buildProxyClass(Class<T> clazz, Supplier<T> realObjectSupplier) {
+		return new ByteBuddy()
+			.subclass(clazz)
+			.method(ElementMatchers.any())
+			.intercept(InvocationHandlerAdapter.of(
+				(proxy, method, args) -> intercept(method, args, realObjectSupplier)))
+			.make()
+			.load(clazz.getClassLoader(), ClassLoadingStrategy.Default.INJECTION)
+			.getLoaded();
 	}
-	
-	private <T> Object intercept(Object obj, java.lang.reflect.Method method, Object[] args, MethodProxy proxy, Supplier<T> realObjectSupplier) throws Throwable {
-		
+
+	private <T> T createProxyWithDefaultConstructor(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
+		try {
+			Supplier<T> realObjectSupplier = buildRealObjectSupplier(clazz, realObjectCreator);
+			return buildProxyClass(clazz, realObjectSupplier).getDeclaredConstructor().newInstance();
+		} catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
+			throw new CannotInject("Failed to instantiate proxy for '" + clazz.getName() + "'", new RuntimeException(e));
+		}
+	}
+
+	private <T> T createProxyWithSingleConstructor(Class<T> clazz, java.lang.reflect.Constructor<?> constructor, Function<Class<T>, T> realObjectCreator) {
+		try {
+			Supplier<T> realObjectSupplier = buildRealObjectSupplier(clazz, realObjectCreator);
+			Class<? extends T> proxyClass = buildProxyClass(clazz, realObjectSupplier);
+			Object[] dummyArgs = argsForConstructor(constructor);
+			return proxyClass.getDeclaredConstructor(constructor.getParameterTypes()).newInstance(dummyArgs);
+		} catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
+			throw new CannotInject("Failed to instantiate proxy for '" + clazz.getName() + "'", new RuntimeException(e));
+		}
+	}
+
+	private <T> Supplier<T> buildRealObjectSupplier(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
+		if (isImmediateInstantiationRequested(clazz) && Scope.isImmediateInstantiationPossible(clazz)) {
+			T realObject = realObjectCreator.apply(clazz);
+			return () -> realObject;
+		}
+		return () -> realObjectCreator.apply(clazz);
+	}
+
+	private <T> Object intercept(java.lang.reflect.Method method, Object[] args, Supplier<T> realObjectSupplier) throws Throwable {
+
         InstancesState instanceState = requestScope.get();
-        
+
 		if (instanceState == null) {
             instanceState = new InstancesState();
 			requestScope.set(instanceState);
         }
-		
+
 		instanceState.incrementCallDepth();
-		
+
         try {
         	return method.invoke(realObjectSupplier.get(), args);
         } finally {
@@ -106,13 +120,8 @@ public class ProxyManager {
     			requestScope.remove();
     		}
         }
-		
 	}
 
-    private <T> T createProxyWithSingleConstructor(Class<T> clazz, java.lang.reflect.Constructor<?> constructor, Function<Class<T>, T> realObjectCreator) {
-       	return (T) createEnhancer(clazz, realObjectCreator).create(constructor.getParameterTypes(), argsForConstructor(constructor));
-    }
-    
     private static final Map<Class<?>, Object> PRIMITIVE_DEFAULTS = new HashMap<>();
 
     static {
@@ -134,7 +143,6 @@ public class ProxyManager {
         }
         return args;
     }
-    
 
 	private <A> Class<A> nonProxyClazz(Class<A> clazz) {
 		Class<A> nonProxyClass = (Class<A>) proxyClasses.get(clazz);
@@ -143,7 +151,7 @@ public class ProxyManager {
 		}
 		return nonProxyClass;
 	}
-	
+
 	public static boolean isImmediateInstantiationRequested(Class<?> c) {
 		return c.getAnnotation(Injectable.class).immediate();
 	}
