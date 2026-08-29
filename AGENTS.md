@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-OOPDI (`de.oopexpert.oopdi:oopdi-core`) is a lightweight, reflection-based dependency injection framework for Java 21. Managed beans are wrapped in cglib subclass proxies; the framework supports four scopes: GLOBAL, THREAD, LOCAL, REQUEST.
+OOPDI (`de.oopexpert.oopdi:oopdi-core`) is a lightweight, reflection-based dependency injection framework for Java 21. Managed beans are wrapped in Byte Buddy subclass proxies; the framework supports four scopes: GLOBAL, THREAD, LOCAL, REQUEST.
 
 ## Setup / Build / Test
 
@@ -25,11 +25,11 @@ oopdi/src/test/java/de/oopexpert/teststructure/  ← fixture classes used by tes
 Readme.md                                    ← project README
 ```
 
-Core classes: `OOPDI` (entry point), `Context` (creates/injects/manages beans), `ProxyManager` (cglib proxies, REQUEST-scope `ThreadLocal`), `ScopedInstances` (maps `Scope → InstancesState`), `InstancesState` (per-scope instance cache + locks), `ClassesResolver` (classpath scan, profile filtering), `Scope` (enum, polymorphic scope selection).
+Core classes: `OOPDI` (entry point), `Context` (creates/injects/manages beans), `ProxyManager` (Byte Buddy proxies, REQUEST-scope `ThreadLocal`), `ScopedInstances` (maps `Scope → InstancesState`), `InstancesState` (per-scope instance cache + locks), `ClassesResolver` (classpath scan, profile filtering), `Scope` (enum, polymorphic scope selection).
 
 ## Key Architectural Rules
 
-- Every managed bean is a cglib subclass proxy; managed classes must not be `final`.
+- Every managed bean is a Byte Buddy subclass proxy; managed classes must not be `final`.
 - Scope selection is polymorphic (`Scope` enum) — no switch statements.
 - Per-class locks allow parallel creation of different beans while serializing creation of the same bean.
 - `immediate=true` is only valid for GLOBAL and THREAD scopes; it is invalid for LOCAL and REQUEST.

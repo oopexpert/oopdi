@@ -24,10 +24,18 @@ When a change introduces a verified repository-specific insight (for example: fi
 
 Required behavior:
 - Update this file (`.github/copilot-instructions.md`) when the insight changes implementation guidance, architecture understanding, or testing guidance.
+- Update `README.md` when the change affects the proxy model, scopes, lifecycle, annotation API, or any user-facing architectural description.
+- Update `AGENTS.md` when the change affects the architecture overview, core class descriptions, or coding conventions.
 - Update repository memory notes (`/memories/repo/oopdi.md`) when the insight is useful for future sessions and command execution.
 - Only record verified facts (code + tests), never speculation.
 - Keep updates concise and additive; prefer small targeted edits.
 - If no new insight was discovered, do not edit helper files.
+
+Pre-commit checklist for architecture-relevant changes (proxy library, scopes, lifecycle, annotations):
+1. `.github/copilot-instructions.md` — updated?
+2. `README.md` — updated?
+3. `AGENTS.md` — updated?
+4. `/memories/repo/oopdi.md` — updated?
 
 Recent verified insights that must stay reflected in helper docs:
 - `immediate=true` is invalid for THREAD, LOCAL, and REQUEST scopes.

@@ -48,7 +48,7 @@ Welcome to OOPDI, a lightweight and versatile Dependency Injection (DI) framewor
 
 ### Overview
 
-Dependency Injection is a fundamental concept in modern software development, promoting loose coupling, testability, and maintainability of code. OOPDI manages object instantiation, field injection, constructor injection, scoping, and lifecycle callbacks transparently via cglib proxies — without requiring any changes to how you write or call your classes.
+Dependency Injection is a fundamental concept in modern software development, promoting loose coupling, testability, and maintainability of code. OOPDI manages object instantiation, field injection, constructor injection, scoping, and lifecycle callbacks transparently via Byte Buddy proxies — without requiring any changes to how you write or call your classes.
 
 ### Features
 
@@ -58,7 +58,7 @@ OOPDI offers the following features:
 
 - **Scoping**: Fine-grained lifecycle control with four built-in scopes: Global, Thread, Local, and Request.
 
-- **Transparent Proxy Model**: Every managed object is accessed through a cglib subclass proxy. Scope resolution, lazy creation, and request-scope lifetime management happen inside the proxy interceptor without any caller involvement.
+- **Transparent Proxy Model**: Every managed object is accessed through a Byte Buddy subclass proxy. Scope resolution, lazy creation, and request-scope lifetime management happen inside the proxy interceptor without any caller involvement.
 
 - **Constructor and Field Injection**: Dependencies can be satisfied either via constructor parameters or via annotated fields, with cycle detection for constructor injection.
 
@@ -203,7 +203,7 @@ RootService root = container.getInstance(RootService.class);
 
 ### Transparent Proxy Model
 
-Every managed object is wrapped in a cglib subclass proxy when first registered. The proxy intercepts every method call, resolves the correct real instance based on the bean's scope, and delegates to it. Callers never need to be aware of the proxy — they program against the normal class type.
+Every managed object is wrapped in a Byte Buddy subclass proxy when first registered. The proxy intercepts every method call, resolves the correct real instance based on the bean's scope, and delegates to it. Callers never need to be aware of the proxy — they program against the normal class type.
 
 Because the proxy is a subclass, the managed class must not be `final`, and its constructor must not be `private`.
 
@@ -290,7 +290,7 @@ Obtain instances only through the `OOPDI` container or through injected proxy re
 
 ### Self-Invocation Bypasses the Proxy
 
-This is standard Java proxy behavior (the same caveat applies to Spring, CDI, etc.), but it is worth stating explicitly: calling `this.someMethod()` from *inside* a managed bean invokes the real object directly, not the cglib proxy. Scope semantics that are enforced at the proxy layer — a fresh instance per call for `LOCAL`, call-depth tracking for `REQUEST` — do **not** apply to such self-invocations. If a method needs proxy-level behavior on every call (e.g. a fresh `LOCAL` instance), it must be called through an injected reference to itself or through the container, not via `this`.
+This is standard Java proxy behavior (the same caveat applies to Spring, CDI, etc.), but it is worth stating explicitly: calling `this.someMethod()` from *inside* a managed bean invokes the real object directly, not the Byte Buddy proxy. Scope semantics that are enforced at the proxy layer — a fresh instance per call for `LOCAL`, call-depth tracking for `REQUEST` — do **not** apply to such self-invocations. If a method needs proxy-level behavior on every call (e.g. a fresh `LOCAL` instance), it must be called through an injected reference to itself or through the container, not via `this`.
 
 ### Controlled Scope
 
