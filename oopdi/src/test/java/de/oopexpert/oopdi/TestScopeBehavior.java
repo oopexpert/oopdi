@@ -10,6 +10,7 @@ import de.oopexpert.teststructure.ClassB;
 import de.oopexpert.teststructure.ClassB1;
 import de.oopexpert.teststructure.ClassC;
 import de.oopexpert.teststructure.ClassD;
+import de.oopexpert.teststructure.ClassGlobalRace;
 import de.oopexpert.teststructure.ClassImmediateLocalMisconfig;
 import de.oopexpert.teststructure.ClassImmediateRequestMisconfig;
 import de.oopexpert.teststructure.ClassImmediateThreadMisconfig;
@@ -94,6 +95,27 @@ class TestScopeBehavior {
             "First container should reflect its own GLOBAL scoped state");
         Assertions.assertNotEquals(123, two.getI(),
             "Different OOPDI containers must not share GLOBAL scoped instances");
+
+    }
+
+    @Test
+    void testGlobalScopeRealObjectResolvedOnceAcrossManyProxyCalls() {
+
+        ClassGlobalRace.instanceCount.set(0);
+
+        OOPDI<ClassGlobalRace> oopdi = new OOPDI<>(ClassGlobalRace.class);
+        ClassGlobalRace instance = oopdi.getInstance(ClassGlobalRace.class);
+
+        // First method call resolves (and caches) the real object.
+        instance.getCount();
+        int countAfterFirstCall = ClassGlobalRace.instanceCount.get();
+
+        for (int i = 0; i < 50; i++) {
+            instance.getCount();
+        }
+
+        Assertions.assertEquals(countAfterFirstCall, ClassGlobalRace.instanceCount.get(),
+            "GLOBAL scoped real object must be resolved once and cached, not re-resolved on every proxy method call");
 
     }
 

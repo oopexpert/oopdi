@@ -41,6 +41,8 @@ Recent verified insights that must stay reflected in helper docs:
 - `immediate=true` is invalid for THREAD, LOCAL, and REQUEST scopes.
 - Misconfiguration for these scope/immediate combinations is observable as a runtime failure when the proxy-invoked method is executed.
 - GLOBAL scope singleton behavior is container-local; different `OOPDI` instances do not share GLOBAL bean instances.
+- `ProxyManager.buildRealObjectSupplier` now lazily caches the resolved real object for GLOBAL (via a synchronized `AtomicReference`) and THREAD (via `ThreadLocal`) scopes, so a proxy method call after the first no longer re-runs `Context.getOrCreate`'s annotation checks and per-class lock acquisition. LOCAL and REQUEST scopes are intentionally excluded and still re-resolve on every call (LOCAL needs a fresh instance per call; REQUEST is thread/call-depth scoped).
+- Confirmed (not yet fixed): building a Byte Buddy proxy (`ProxyManager.proxy()`/`createProxyWith*Constructor`) invokes the real class's constructor immediately with dummy/null arguments, *before* `Context`'s `@Injectable`/abstract validation runs (that only runs lazily on first proxy *method* call). This means any class passed to `proxyIfNotExists` has its constructor executed once as a side effect of proxy creation alone, independent of eligibility. Verified via `ClassGlobalRace.instanceCount` incrementing to 2 (one from proxy-shell construction, one from the real cached resolution) in `TestScopeBehavior.testGlobalScopeRealObjectResolvedOnceAcrossManyProxyCalls`. Planned fix: move eligibility validation before proxy/constructor invocation (see session plan).
 
 Copilot must continuously validate its own reasoning against verified project facts.  
 Verified facts are exclusively those derived from:

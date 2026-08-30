@@ -3,6 +3,7 @@ package de.oopexpert.oopdi;
 import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -98,7 +99,49 @@ public class ProxyManager {
 			T realObject = realObjectCreator.apply(clazz);
 			return () -> realObject;
 		}
-		return () -> realObjectCreator.apply(clazz);
+		// GLOBAL and THREAD scoped beans resolve to a single stable real object (per container /
+		// per thread respectively). Without immediate=true, resolving through realObjectCreator
+		// on every single proxy method call re-runs annotation checks and lock acquisition for no
+		// benefit once the instance exists, so cache it lazily instead. LOCAL (fresh instance per
+		// call) and REQUEST (thread/call-depth scoped) must keep re-resolving on every call.
+		switch (Scope.of(clazz)) {
+			case GLOBAL:
+				return globalCachingSupplier(clazz, realObjectCreator);
+			case THREAD:
+				return threadCachingSupplier(clazz, realObjectCreator);
+			default:
+				return () -> realObjectCreator.apply(clazz);
+		}
+	}
+
+	private <T> Supplier<T> globalCachingSupplier(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
+		AtomicReference<T> cache = new AtomicReference<>();
+		Object lock = new Object();
+		return () -> {
+			T value = cache.get();
+			if (value == null) {
+				synchronized (lock) {
+					value = cache.get();
+					if (value == null) {
+						value = realObjectCreator.apply(clazz);
+						cache.set(value);
+					}
+				}
+			}
+			return value;
+		};
+	}
+
+	private <T> Supplier<T> threadCachingSupplier(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
+		ThreadLocal<T> cache = new ThreadLocal<>();
+		return () -> {
+			T value = cache.get();
+			if (value == null) {
+				value = realObjectCreator.apply(clazz);
+				cache.set(value);
+			}
+			return value;
+		};
 	}
 
 	private <T> Object intercept(java.lang.reflect.Method method, Object[] args, Supplier<T> realObjectSupplier) throws Throwable {

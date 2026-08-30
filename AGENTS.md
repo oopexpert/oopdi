@@ -34,6 +34,8 @@ Core classes: `OOPDI` (entry point), `Context` (creates/injects/manages beans), 
 - Per-class locks allow parallel creation of different beans while serializing creation of the same bean.
 - `immediate=true` is only valid for GLOBAL and THREAD scopes; it is invalid for LOCAL and REQUEST.
 - GLOBAL scope singleton behavior is container-local — different `OOPDI` instances never share GLOBAL beans.
+- GLOBAL/THREAD scoped proxies cache their resolved real object after the first method call (`ProxyManager.buildRealObjectSupplier`); LOCAL/REQUEST intentionally re-resolve on every call.
+- Known gap (fix planned): a class's real constructor runs once as a side effect of proxy creation itself, before `@Injectable`/abstract validation — see [.github/copilot-instructions.md](.github/copilot-instructions.md).
 
 Full architecture, concurrency, and lifecycle details: see [.github/copilot-instructions.md](.github/copilot-instructions.md).
 
