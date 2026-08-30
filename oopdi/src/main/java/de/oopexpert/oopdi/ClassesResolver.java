@@ -132,12 +132,22 @@ public class ClassesResolver {
         String jarEntryName = jarEntry.getName();
 		if (jarEntryName.startsWith(path) && jarEntryName.endsWith(SUFFIX_CLASS)) {
 		    String className = toClassName(jarEntryName);
-		    Class<?> clazz = Class.forName(className);
+		    Class<?> clazz = loadWithoutInitializing(className, parentClass);
 		    if (parentClass.isAssignableFrom(clazz) && !parentClass.equals(clazz)) {
 		        return (Class<T>) clazz;
 		    }
 		}
 		return null;
+	}
+
+	/**
+	 * Loads a class by name for classpath-scan purposes without running its static initializers
+	 * (initialize=false), since most scanned candidates are discarded again by profile/abstract
+	 * filtering and must not have observable side effects before that filtering completes. The
+	 * JVM initializes the class normally, on demand, once it is actually instantiated.
+	 */
+	private Class<?> loadWithoutInitializing(String className, Class<?> contextClass) throws ClassNotFoundException {
+		return Class.forName(className, false, contextClass.getClassLoader());
 	}
 
 	private String toClassName(String pathName) {
@@ -172,7 +182,7 @@ public class ClassesResolver {
 	private <T> Class<T> findAssignableClassInFile(Class<T> parentClass, String packageName, File file) throws ClassNotFoundException {
 		if (file.getName().endsWith(SUFFIX_CLASS)) {
 		    String className = toClassName(packageName, file);
-		    Class<?> clazz = Class.forName(className);
+		    Class<?> clazz = loadWithoutInitializing(className, parentClass);
 		    if (parentClass.isAssignableFrom(clazz) && !parentClass.equals(clazz)) {
 		        return (Class<T>) clazz;
 		    }

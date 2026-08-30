@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 
 import de.oopexpert.teststructure.ClassAbstractInjectableWithSideEffect;
 import de.oopexpert.teststructure.ClassNotInjectableWithSideEffect;
+import de.oopexpert.teststructure.ClassSetSideEffectRoot;
+import de.oopexpert.teststructure.ClassSetSideEffectTracker;
 
 /**
  * Verifies that eligibility validation (annotation presence, non-abstract) runs *before* any
@@ -44,6 +46,23 @@ class TestSecurityValidation {
         Assertions.assertTrue(ex.getMessage().contains("abstract"));
         Assertions.assertEquals(0, ClassAbstractInjectableWithSideEffect.constructorCallCount.get(),
             "Constructor must not run as a side effect of proxy creation for an abstract class");
+
+    }
+
+    @Test
+    void testInjectSetClasspathScanDoesNotInitializeProfileFilteredCandidate() {
+
+        OOPDI<ClassSetSideEffectRoot> oopdi = new OOPDI<>(ClassSetSideEffectRoot.class);
+
+        // No profile active, so the candidate implementation (requires
+        // "profile-never-active-for-side-effect-test") must be filtered out; the classpath scan
+        // itself must not have triggered its static initializer while loading/checking it for
+        // assignability and profile membership.
+        Assertions.assertTrue(oopdi.getInstance(ClassSetSideEffectRoot.class).getValues().isEmpty(),
+            "Profile-mismatched candidate must not be included in the injected set");
+
+        Assertions.assertEquals(0, ClassSetSideEffectTracker.staticInitCount.get(),
+            "Classpath scan must not initialize a class that ends up filtered out by profile mismatch");
 
     }
 
