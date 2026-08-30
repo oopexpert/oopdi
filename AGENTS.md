@@ -35,7 +35,8 @@ Core classes: `OOPDI` (entry point), `Context` (creates/injects/manages beans), 
 - `immediate=true` is only valid for GLOBAL and THREAD scopes; it is invalid for LOCAL and REQUEST.
 - GLOBAL scope singleton behavior is container-local — different `OOPDI` instances never share GLOBAL beans.
 - GLOBAL/THREAD scoped proxies cache their resolved real object after the first method call (`ProxyManager.buildRealObjectSupplier`); LOCAL/REQUEST intentionally re-resolve on every call.
-- Known gap (fix planned): a class's real constructor runs once as a side effect of proxy creation itself, before `@Injectable`/abstract validation — see [.github/copilot-instructions.md](.github/copilot-instructions.md).
+- Fixed: eligibility validation (`@Injectable` present, non-abstract) now runs before any proxy/real constructor executes (`ProxyManager.proxyIfNotExists(Class, Consumer, Function)` + `Context.validateEligible`), closing the premature-construction gap described in [.github/copilot-instructions.md](.github/copilot-instructions.md).
+- Remaining hardening gaps (planned): classpath scan in `ClassesResolver` eagerly initializes classes via `Class.forName`, and `Context.processField` opens reflective access before checking which inject annotation applies — see [.github/copilot-instructions.md](.github/copilot-instructions.md).
 
 Full architecture, concurrency, and lifecycle details: see [.github/copilot-instructions.md](.github/copilot-instructions.md).
 

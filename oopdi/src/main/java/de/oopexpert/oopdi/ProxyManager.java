@@ -4,6 +4,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -25,9 +26,20 @@ public class ProxyManager {
 	}
 
 	public <T> T proxyIfNotExists(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
+		return proxyIfNotExists(clazz, c -> { }, realObjectCreator);
+	}
+
+	/**
+	 * Resolves (or lazily creates) the proxy for {@code clazz}. {@code eligibilityCheck} is run
+	 * synchronously *before* any proxy class or real constructor is invoked, so that classes
+	 * which fail eligibility (not {@code @Injectable}, abstract, ...) never have their
+	 * constructor or static initializers executed as a side effect of proxy creation.
+	 */
+	public <T> T proxyIfNotExists(Class<T> clazz, Consumer<Class<T>> eligibilityCheck, Function<Class<T>, T> realObjectCreator) {
 		synchronized (proxies) {
 			Class<T> nonProxyClass = nonProxyClazz(clazz);
 			if (!proxies.containsKey(nonProxyClass)) {
+				eligibilityCheck.accept(nonProxyClass);
 				proxies.put(nonProxyClass, proxy(nonProxyClass, realObjectCreator));
 			}
 			return (T) proxies.get(nonProxyClass);

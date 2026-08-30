@@ -48,7 +48,7 @@ public class Context<T> {
 		this.scopedInstances = scopedInstances;
 		this.classesResolver = classesResolver;
 		this.proxyManager = proxyManager;
-		this.proxyManager.proxyIfNotExists(rootClazz, this::getOrCreate);
+		this.proxyManager.proxyIfNotExists(rootClazz, this::validateEligible, this::getOrCreate);
 	}
 
 	private Object processFields(Object instance) throws IllegalArgumentException, IllegalAccessException, ClassNotFoundException, IOException, URISyntaxException, InstantiationException, InvocationTargetException, NoSuchMethodException {
@@ -140,7 +140,7 @@ public class Context<T> {
 		Set<Object> components = new HashSet<>();
 		
 		for (Class<?> clazz : classesResolver.getSet(hint)) {
-			components.add(proxyManager.proxyIfNotExists(clazz, this::getOrCreate));
+			components.add(proxyManager.proxyIfNotExists(clazz, this::validateEligible, this::getOrCreate));
 		}
 		
 		return components;
@@ -155,7 +155,7 @@ public class Context<T> {
 	}
 
 	private <A> void setField(Object instance, Field field, Class<A> fieldClazz, Function<Class<A>, A> creator) throws IllegalAccessException {
-		field.set(instance, proxyManager.proxyIfNotExists(fieldClazz, creator));
+		field.set(instance, proxyManager.proxyIfNotExists(fieldClazz, this::validateEligible, creator));
 	}
 
 	private <A> A getOrCreate(Class<A> c)  {
@@ -166,6 +166,19 @@ public class Context<T> {
 
 		return getOrCreateInjectable(c);
 
+	}
+
+	/**
+	 * Eligibility gate run before any proxy or real constructor is invoked (see
+	 * {@link ProxyManager#proxyIfNotExists(Class, java.util.function.Consumer, Function)}), so
+	 * that a class failing these checks never has its constructor or static initializers
+	 * executed as a side effect of proxy creation. Constructor-injected parameters resolve via
+	 * {@link #getOrCreate(Class)} directly (bypassing the proxy layer), which performs the same
+	 * checks itself.
+	 */
+	private <A> void validateEligible(Class<A> c) {
+	    checkInjectableAnnotated(c);
+	    checkNonAbstract(c);
 	}
 
 	private <A> void checkImmediateInstantiationConfiguration(Class<A> c) {
@@ -287,7 +300,7 @@ public class Context<T> {
 	}
 
 	public <A> A getOrCreateInstance(Class<A> clazz) {
-		return (A) proxyManager.proxyIfNotExists(clazz, this::getOrCreate);
+		return (A) proxyManager.proxyIfNotExists(clazz, this::validateEligible, this::getOrCreate);
 	}
 
 	public void shutdown() {
