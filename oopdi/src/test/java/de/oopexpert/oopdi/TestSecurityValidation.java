@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import de.oopexpert.teststructure.ClassAbstractInjectableWithSideEffect;
+import de.oopexpert.teststructure.ClassFieldAccessibilityTarget;
 import de.oopexpert.teststructure.ClassNotInjectableWithSideEffect;
 import de.oopexpert.teststructure.ClassSetSideEffectRoot;
 import de.oopexpert.teststructure.ClassSetSideEffectTracker;
@@ -63,6 +64,24 @@ class TestSecurityValidation {
 
         Assertions.assertEquals(0, ClassSetSideEffectTracker.staticInitCount.get(),
             "Classpath scan must not initialize a class that ends up filtered out by profile mismatch");
+
+    }
+
+    @Test
+    void testFieldProcessingStillInjectsAnnotatedFieldsCorrectly() {
+
+        // Context.processField now only calls field.setAccessible(true) inside the branch for
+        // the annotation actually present, instead of unconditionally for every declared field
+        // (narrowing reflective access). Field#setAccessible's override flag is per Field
+        // instance and is not observable through a freshly obtained java.lang.reflect.Field, so
+        // this cannot be asserted black-box; this test is a functional regression guard
+        // confirming injection still works correctly after that change.
+
+        OOPDI<ClassFieldAccessibilityTarget> oopdi = new OOPDI<>(ClassFieldAccessibilityTarget.class);
+
+        ClassFieldAccessibilityTarget instance = oopdi.getInstance(ClassFieldAccessibilityTarget.class);
+
+        Assertions.assertNotNull(instance.getInjectedField(), "Annotated field must still be injected");
 
     }
 

@@ -67,12 +67,14 @@ public class Context<T> {
 	}
 
 	private void processField(Object instance, Field field) throws IllegalAccessException, ClassNotFoundException, InstantiationException, InvocationTargetException, NoSuchMethodException, IOException, URISyntaxException {
-		field.setAccessible(true);
 	    if (field.isAnnotationPresent(InjectInstance.class)) {
+			field.setAccessible(true);
 			inject(instance, field);
 	    } else if (field.isAnnotationPresent(InjectSet.class)) {
+	    	field.setAccessible(true);
 	    	injectSet(instance, field);
 	    } else if (field.isAnnotationPresent(InjectVariable.class)) {
+	    	field.setAccessible(true);
 	    	injectVariable(instance, field);
 	    }
 	}
