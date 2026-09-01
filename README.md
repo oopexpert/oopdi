@@ -355,6 +355,30 @@ Releases are versioned based on [Conventional Commits](https://www.conventionalc
 
 Version is tracked in [oopdi/pom.xml](oopdi/pom.xml) and [oopdi/CHANGELOG.md](oopdi/CHANGELOG.md).
 
-1. After merging commits to `main`, run the **Release** workflow (`.github/workflows/release-version.yml`, `workflow_dispatch`) from the Actions tab. It inspects commit messages since the last `vX.Y.Z` tag, computes the next version, bumps `oopdi/pom.xml` and `oopdi/CHANGELOG.md`, and commits + tags that directly on `main` (no PR).
-2. The pushed tag automatically triggers the **Release** workflow (`.github/workflows/release.yml`), which builds the jar with Maven and creates the GitHub Release with the jar attached.
+Run the **Release** workflow (`.github/workflows/release-version.yml`, `workflow_dispatch`) from the Actions tab after merging commits to `main`. In a single run it: inspects commit messages since the last `vX.Y.Z` tag, computes the next version, bumps `oopdi/pom.xml` and `oopdi/CHANGELOG.md`, commits and tags directly on `main` (no PR), builds the jar with Maven, publishes it to GitHub Packages, and creates the GitHub Release with the jar attached. The workflow no-ops if no `fix:`/`feat:`/breaking commit is found since the last tag.
+
+## Installation via GitHub Packages
+
+Each release is published to [GitHub Packages](https://github.com/oopexpert/oopdi/packages) under the unchanged coordinate `de.oopexpert.oopdi:oopdi-core`. GitHub Packages does not allow anonymous reads even for public repositories — consumers need a GitHub Personal Access Token with at least the `read:packages` scope.
+
+Add the repository and dependency to your `pom.xml`:
+
+```xml
+<repositories>
+    <repository>
+        <id>github</id>
+        <url>https://maven.pkg.github.com/oopexpert/oopdi</url>
+    </repository>
+</repositories>
+
+<dependencies>
+    <dependency>
+        <groupId>de.oopexpert.oopdi</groupId>
+        <artifactId>oopdi-core</artifactId>
+        <version>0.1.0</version>
+    </dependency>
+</dependencies>
+```
+
+And configure credentials for the `github` server id in `~/.m2/settings.xml` (see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md#13-oopdi-als-dependency-via-github-packages-einbinden) for details).
 

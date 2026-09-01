@@ -4,6 +4,14 @@
 	<artifactId>oopdi-core</artifactId>
 	<version>0.1.0</version>
 
+	<distributionManagement>
+		<repository>
+			<id>github</id>
+			<name>OOPDI GitHub Packages</name>
+			<url>https://maven.pkg.github.com/oopexpert/oopdi</url>
+		</repository>
+	</distributionManagement>
+
 	<dependencies>
 		<dependency>
 			<groupId>org.junit.jupiter</groupId>

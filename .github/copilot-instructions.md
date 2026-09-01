@@ -22,8 +22,7 @@ Eclipse's built-in JUnit launcher does not read Surefire's `environmentVariables
 
 Releases are versioned via Conventional Commits (`fix:`=patch, `feat:`=minor, `!:`/`BREAKING CHANGE:` footer=major, `chore:`/`docs:`/`test:`/`ci:`/`refactor:`=no release), with no pull request involved (repo rules disallow Actions-created PRs and workflow-file pushes without extra token scopes, so a PR-based tool like release-please does not work here):
 
-1. Run the **Release** workflow (`.github/workflows/release-version.yml`, `workflow_dispatch`). It scans commits since the last `vX.Y.Z` tag, computes the next version, bumps `oopdi/pom.xml`/`oopdi/CHANGELOG.md`, and commits + tags directly on `main` (no-op if no `fix:`/`feat:`/breaking commit found).
-2. The pushed tag triggers `.github/workflows/release.yml` (Release Pipeline), which builds with Maven and creates the GitHub Release with the jar attached.
+A single workflow, `.github/workflows/release-version.yml` (`workflow_dispatch`), does everything in one run: scans commits since the last `vX.Y.Z` tag, computes the next version, bumps `oopdi/pom.xml`/`oopdi/CHANGELOG.md`, commits + tags directly on `main` (no-op if no `fix:`/`feat:`/breaking commit found), builds the jar with Maven, publishes it to GitHub Packages (`de.oopexpert.oopdi:oopdi-core`, via `distributionManagement` in `oopdi/pom.xml` + `actions/setup-java`'s `server-id`/`server-username`/`server-password` inputs), and creates the GitHub Release with the jar attached. There is no longer a separate tag-triggered workflow.
 
 ## Copilot Self-Maintenance
 

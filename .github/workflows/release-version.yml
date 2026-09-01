@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   release:
@@ -88,6 +89,7 @@ jobs:
           mv /tmp/CHANGELOG.md oopdi/CHANGELOG.md
 
       - name: Commit and tag
+        id: tag
         if: steps.bump.outputs.bump != 'none'
         run: |
           set -e
@@ -99,3 +101,34 @@ jobs:
           git tag "v${NEW}"
           git push origin HEAD:main
           git push origin "v${NEW}"
+          echo "tag_name=v${NEW}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK
+        if: steps.bump.outputs.bump != 'none'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
+
+      - name: Build application
+        if: steps.bump.outputs.bump != 'none'
+        env:
+          dbUrl: "jdbc://mysql:userdb"
+        working-directory: oopdi
+        run: mvn clean package --file pom.xml -DdbUsername=dbUser1 -Dcounter=4
+
+      - name: Publish to GitHub Packages
+        if: steps.bump.outputs.bump != 'none'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: oopdi
+        run: mvn deploy -DskipTests --file pom.xml
+
+      - name: Create GitHub Release and upload artifact
+        if: steps.bump.outputs.bump != 'none'
+        run: gh release create "${{ steps.tag.outputs.tag_name }}" oopdi/target/*.jar --title "${{ steps.tag.outputs.tag_name }}" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

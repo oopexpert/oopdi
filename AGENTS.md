@@ -58,7 +58,7 @@ Full architecture, concurrency, and lifecycle details: see [.github/copilot-inst
 
 ## Release Process
 
-Releases are versioned via a manually triggered workflow (`.github/workflows/release-version.yml`) that commits the version bump directly to `main` (no pull request — repo rules block Actions-created PRs here). Conventional Commits drive version bumps: `fix:`=patch, `feat:`=minor, `!:`/`BREAKING CHANGE:`=major, other prefixes=no release. Full flow (run workflow → direct commit+tag on main → tag push builds/creates release) documented in [README.md](README.md#release-process) and [.github/copilot-instructions.md](.github/copilot-instructions.md).
+Releases are versioned via a single manually triggered workflow (`.github/workflows/release-version.yml`, `workflow_dispatch`) that, in one run, commits the version bump directly to `main` (no pull request — repo rules block Actions-created PRs here), builds with Maven, publishes the jar to GitHub Packages (`de.oopexpert.oopdi:oopdi-core`), and creates the GitHub Release. Conventional Commits drive version bumps: `fix:`=patch, `feat:`=minor, `!:`/`BREAKING CHANGE:`=major, other prefixes=no release. Full details in [README.md](README.md#release-process) and [.github/copilot-instructions.md](.github/copilot-instructions.md).
 
 ## Commit / PR Guidelines
 
