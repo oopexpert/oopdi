@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0 (2026-09-01)
+
+- feat: merge release workflows and publish to GitHub Packages
+
 ## [0.1.0](https://github.com/oopexpert/oopdi/compare/0.0.4...v0.1.0) (2026-09-01)
 
 
