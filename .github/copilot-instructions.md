@@ -18,6 +18,17 @@ Eclipse's built-in JUnit launcher does not read Surefire's `environmentVariables
 
 (`--add-opens` flags are no longer needed since migration to Byte Buddy.)
 
+## Release Process
+
+Releases are managed by `release-please` (Conventional Commits: `fix:`=patch, `feat:`=minor, `feat!:`/`BREAKING CHANGE:` footer=major, `chore:`/`docs:`/`test:`/`ci:`/`refactor:`=no release). Manual-only trigger, no automatic push-to-main trigger:
+
+1. Run the **Release Please** workflow (`.github/workflows/release-please.yml`, `workflow_dispatch`) to open/update a release PR (bumps `oopdi/pom.xml` version + `oopdi/CHANGELOG.md`).
+2. Merge the release PR.
+3. Run the **Release Please** workflow again so it detects the merge and creates tag `vX.Y.Z` + GitHub Release.
+4. The tag push triggers `.github/workflows/release.yml` (Release Pipeline), which builds with Maven and uploads the jar to the already-created GitHub Release (no longer creates its own release/tag).
+
+Config: `release-please-config.json` (root), `.release-please-manifest.json` (root). Manifest key/package path is `oopdi` (matches the Maven module directory).
+
 ## Copilot Self-Maintenance
 
 When a change introduces a verified repository-specific insight (for example: fixed behavior, scope rule clarification, lifecycle constraint, or test reliability rule), update GitHub Copilot helper docs automatically in the same task.

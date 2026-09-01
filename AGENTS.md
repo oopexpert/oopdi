@@ -56,6 +56,10 @@ Full architecture, concurrency, and lifecycle details: see [.github/copilot-inst
 - Fixture classes: `Class*` under `oopdi/src/test/java/de/oopexpert/teststructure/`.
 - Run all tests with `mvn test` (see Setup above) before considering any change complete.
 
+## Release Process
+
+Releases are automated via `release-please` (manual-only trigger, no push-to-main automation). Conventional Commits drive version bumps: `fix:`=patch, `feat:`=minor, `feat!:`/`BREAKING CHANGE:`=major, other prefixes=no release. Full two-step manual flow (run workflow → merge release PR → run workflow again to tag+release → tag push builds/uploads jar) documented in [README.md](README.md#release-process) and [.github/copilot-instructions.md](.github/copilot-instructions.md).
+
 ## Commit / PR Guidelines
 
 - One commit per task/change/feature.

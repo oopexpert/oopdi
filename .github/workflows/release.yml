@@ -1,11 +1,9 @@
 name: Release Pipeline
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag_name:
-        description: 'Git tag for the release'
-        required: true
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -15,21 +13,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout tag
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Ensures all tags are fetched
-
-      - name: Fetch tags
-        run: git fetch --tags --force
-
-      - name: Checkout specific tag
-        run: |
-          git rev-parse --verify --quiet "refs/tags/${{ github.event.inputs.tag_name }}" || {
-            echo "::error::Tag '${{ github.event.inputs.tag_name }}' does not exist in this repository. Create and push the tag first (e.g. 'git tag ${{ github.event.inputs.tag_name }} && git push origin ${{ github.event.inputs.tag_name }}'), then re-run this workflow."
-            exit 1
-          }
-          git checkout "refs/tags/${{ github.event.inputs.tag_name }}"
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -41,17 +26,9 @@ jobs:
         env:
           dbUrl: "jdbc://mysql:userdb"
         working-directory: oopdi
-        run: |
-          # Replace with your actual build command, e.g., Maven or Gradle
-          mvn clean package --file pom.xml -DdbUsername=dbUser1 -Dcounter=4
+        run: mvn clean package --file pom.xml -DdbUsername=dbUser1 -Dcounter=4
 
-      - name: Upload artifact to GitHub Release
-        uses: ncipollo/release-action@v1
-        with:
-          tag: ${{ github.event.inputs.tag_name }}
-          name: Release ${{ github.event.inputs.tag_name }}
-          body: |
-            This is an automated release for ${{ github.event.inputs.tag_name }}.
-          artifacts: |
-            oopdi/target/*.jar
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload artifact to existing GitHub Release
+        run: gh release upload "${{ github.ref_name }}" oopdi/target/*.jar --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

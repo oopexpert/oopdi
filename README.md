@@ -344,3 +344,21 @@ public class InMemoryDataSource extends DataSource { ... }
 | `UnderConstruction` | Internal sentinel for constructor cycle detection; surfaced as `CannotInject`. |
 | `RuntimeException` (variable injection) | A required environment variable or system property key was not found. |
 
+## Release Process
+
+Releases are managed by [release-please](https://github.com/googleapis/release-please) based on [Conventional Commits](https://www.conventionalcommits.org/) on `main`:
+
+- `fix:` → patch release
+- `feat:` → minor release
+- `feat!:` / any commit with a `BREAKING CHANGE:` footer → major release
+- `chore:`, `docs:`, `test:`, `ci:`, `refactor:`, etc. → no release
+
+Version is tracked in [oopdi/pom.xml](oopdi/pom.xml) and [oopdi/CHANGELOG.md](oopdi/CHANGELOG.md), both maintained automatically by release-please.
+
+The process is manually triggered (no automatic push trigger):
+
+1. After merging commits to `main`, run the **Release Please** workflow (`workflow_dispatch`) from the Actions tab. This opens or updates a "chore(main): release X.Y.Z" pull request containing the version bump and changelog entry.
+2. Review and merge that pull request.
+3. Run the **Release Please** workflow a second time. Since there is no automatic trigger on merge, this second manual run is what allows release-please to detect the merged release PR and create the corresponding tag (`vX.Y.Z`) and GitHub Release.
+4. The tag push automatically triggers the **Release Pipeline** workflow, which builds the jar with Maven and uploads it to the GitHub Release that release-please already created.
+
