@@ -28,7 +28,7 @@ jobs:
         working-directory: oopdi
         run: mvn clean package --file pom.xml -DdbUsername=dbUser1 -Dcounter=4
 
-      - name: Upload artifact to existing GitHub Release
-        run: gh release upload "${{ github.ref_name }}" oopdi/target/*.jar --clobber
+      - name: Create GitHub Release and upload artifact
+        run: gh release create "${{ github.ref_name }}" oopdi/target/*.jar --title "${{ github.ref_name }}" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

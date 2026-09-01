@@ -346,19 +346,15 @@ public class InMemoryDataSource extends DataSource { ... }
 
 ## Release Process
 
-Releases are managed by [release-please](https://github.com/googleapis/release-please) based on [Conventional Commits](https://www.conventionalcommits.org/) on `main`:
+Releases are versioned based on [Conventional Commits](https://www.conventionalcommits.org/) on `main`, via a manually triggered GitHub Actions workflow (no pull request involved):
 
 - `fix:` → patch release
 - `feat:` → minor release
-- `feat!:` / any commit with a `BREAKING CHANGE:` footer → major release
-- `chore:`, `docs:`, `test:`, `ci:`, `refactor:`, etc. → no release
+- Any commit with a `!:` marker or a `BREAKING CHANGE:` footer → major release
+- `chore:`, `docs:`, `test:`, `ci:`, `refactor:`, etc. → no release (workflow no-ops if no relevant commit is found since the last tag)
 
-Version is tracked in [oopdi/pom.xml](oopdi/pom.xml) and [oopdi/CHANGELOG.md](oopdi/CHANGELOG.md), both maintained automatically by release-please.
+Version is tracked in [oopdi/pom.xml](oopdi/pom.xml) and [oopdi/CHANGELOG.md](oopdi/CHANGELOG.md).
 
-The process is manually triggered (no automatic push trigger):
-
-1. After merging commits to `main`, run the **Release Please** workflow (`workflow_dispatch`) from the Actions tab. This opens or updates a "chore(main): release X.Y.Z" pull request containing the version bump and changelog entry.
-2. Review and merge that pull request.
-3. Run the **Release Please** workflow a second time. Since there is no automatic trigger on merge, this second manual run is what allows release-please to detect the merged release PR and create the corresponding tag (`vX.Y.Z`) and GitHub Release.
-4. The tag push automatically triggers the **Release Pipeline** workflow, which builds the jar with Maven and uploads it to the GitHub Release that release-please already created.
+1. After merging commits to `main`, run the **Release** workflow (`.github/workflows/release-version.yml`, `workflow_dispatch`) from the Actions tab. It inspects commit messages since the last `vX.Y.Z` tag, computes the next version, bumps `oopdi/pom.xml` and `oopdi/CHANGELOG.md`, and commits + tags that directly on `main` (no PR).
+2. The pushed tag automatically triggers the **Release** workflow (`.github/workflows/release.yml`), which builds the jar with Maven and creates the GitHub Release with the jar attached.
 

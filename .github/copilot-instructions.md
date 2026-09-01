@@ -20,14 +20,10 @@ Eclipse's built-in JUnit launcher does not read Surefire's `environmentVariables
 
 ## Release Process
 
-Releases are managed by `release-please` (Conventional Commits: `fix:`=patch, `feat:`=minor, `feat!:`/`BREAKING CHANGE:` footer=major, `chore:`/`docs:`/`test:`/`ci:`/`refactor:`=no release). Manual-only trigger, no automatic push-to-main trigger:
+Releases are versioned via Conventional Commits (`fix:`=patch, `feat:`=minor, `!:`/`BREAKING CHANGE:` footer=major, `chore:`/`docs:`/`test:`/`ci:`/`refactor:`=no release), with no pull request involved (repo rules disallow Actions-created PRs and workflow-file pushes without extra token scopes, so a PR-based tool like release-please does not work here):
 
-1. Run the **Release Please** workflow (`.github/workflows/release-please.yml`, `workflow_dispatch`) to open/update a release PR (bumps `oopdi/pom.xml` version + `oopdi/CHANGELOG.md`).
-2. Merge the release PR.
-3. Run the **Release Please** workflow again so it detects the merge and creates tag `vX.Y.Z` + GitHub Release.
-4. The tag push triggers `.github/workflows/release.yml` (Release Pipeline), which builds with Maven and uploads the jar to the already-created GitHub Release (no longer creates its own release/tag).
-
-Config: `release-please-config.json` (root), `.release-please-manifest.json` (root). Manifest key/package path is `oopdi` (matches the Maven module directory).
+1. Run the **Release** workflow (`.github/workflows/release-version.yml`, `workflow_dispatch`). It scans commits since the last `vX.Y.Z` tag, computes the next version, bumps `oopdi/pom.xml`/`oopdi/CHANGELOG.md`, and commits + tags directly on `main` (no-op if no `fix:`/`feat:`/breaking commit found).
+2. The pushed tag triggers `.github/workflows/release.yml` (Release Pipeline), which builds with Maven and creates the GitHub Release with the jar attached.
 
 ## Copilot Self-Maintenance
 

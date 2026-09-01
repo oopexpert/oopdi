@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version bump from commit messages
+        id: bump
+        run: |
+          set -e
+          LAST_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="$LAST_TAG..HEAD"
+          fi
+          COMMITS=$(git log $RANGE --format='%s%n%b')
+          echo "Commits since ${LAST_TAG:-<repo start>}:"
+          echo "$COMMITS"
+
+          BUMP="none"
+          if echo "$COMMITS" | grep -Eq '^[a-zA-Z]+(\(.+\))?!:|BREAKING CHANGE:'; then
+            BUMP="major"
+          elif echo "$COMMITS" | grep -Eq '^feat(\(.+\))?:'; then
+            BUMP="minor"
+          elif echo "$COMMITS" | grep -Eq '^fix(\(.+\))?:'; then
+            BUMP="patch"
+          fi
+
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+          echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
+          echo "Determined bump: $BUMP"
+
+      - name: Compute new version
+        id: version
+        if: steps.bump.outputs.bump != 'none'
+        run: |
+          set -e
+          CURRENT=$(grep -m1 -oP '(?<=<version>)[^<]+' oopdi/pom.xml)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          case "${{ steps.bump.outputs.bump }}" in
+            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH+1)) ;;
+          esac
+          NEW="$MAJOR.$MINOR.$PATCH"
+          echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "Bumping $CURRENT -> $NEW"
+
+      - name: Update pom.xml and CHANGELOG.md
+        if: steps.bump.outputs.bump != 'none'
+        run: |
+          set -e
+          NEW="${{ steps.version.outputs.new_version }}"
+          LAST_TAG="${{ steps.bump.outputs.last_tag }}"
+
+          sed -i "0,/<version>[^<]*<\/version>/s//<version>${NEW}<\/version>/" oopdi/pom.xml
+
+          if [ -z "$LAST_TAG" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="$LAST_TAG..HEAD"
+          fi
+
+          {
+            echo "## ${NEW} ($(date +%Y-%m-%d))"
+            echo ""
+            git log $RANGE --format='- %s' | grep -Ev '^- (chore|docs|test|ci|refactor)(\(.+\))?:' || true
+          } > /tmp/new-section.md
+
+          awk -v newfile=/tmp/new-section.md '
+            NR==1 {print; next}
+            /^$/ && !inserted {print; while ((getline line < newfile) > 0) print line; print ""; inserted=1; next}
+            {print}
+          ' oopdi/CHANGELOG.md > /tmp/CHANGELOG.md
+          mv /tmp/CHANGELOG.md oopdi/CHANGELOG.md
+
+      - name: Commit and tag
+        if: steps.bump.outputs.bump != 'none'
+        run: |
+          set -e
+          NEW="${{ steps.version.outputs.new_version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add oopdi/pom.xml oopdi/CHANGELOG.md
+          git commit -m "chore(release): v${NEW}"
+          git tag "v${NEW}"
+          git push origin HEAD:main
+          git push origin "v${NEW}"
