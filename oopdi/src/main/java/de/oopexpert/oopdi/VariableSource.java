@@ -4,17 +4,17 @@ public enum VariableSource {
 
 	SYSTEM {
 		@Override
-		String getValueByKey(String key) {
+		public String getValueByKey(String key) {
 			return System.getenv(key);
 		}
 	},
 	PARAMETER {
 		@Override
-		String getValueByKey(String key) {
+		public String getValueByKey(String key) {
 			return System.getProperty(key);
 		}
 	};
 
-	abstract String getValueByKey(String key);
+	public abstract String getValueByKey(String key);
 	
 }

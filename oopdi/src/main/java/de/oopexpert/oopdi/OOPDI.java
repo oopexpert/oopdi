@@ -1,35 +1,42 @@
 package de.oopexpert.oopdi;
 
-public class OOPDI<T> {
+import java.util.Objects;
 
-	private ScopedInstances scopedInstances;
-	
-	private Class<T> rootClazz;
+public class OOPDI<T> implements AutoCloseable {
 
-	private ProxyManager proxyManager = new ProxyManager();
-	private ClassesResolver classesResolver;
+	private final ScopedInstances scopedInstances;
+	private final Class<T> rootClazz;
+	private final ProxyManager proxyManager;
+	private final ClassesResolver classesResolver;
 
-	private Context<T> context;
-	
-    public OOPDI(Class<T> rootClazz, String... profiles) {
-    	this.scopedInstances = new ScopedInstances();
-    	this.classesResolver = new ClassesResolver(profiles);
-    	this.rootClazz = rootClazz;
+	private volatile Context<T> context;
+
+	public OOPDI(Class<T> rootClazz, String... profiles) {
+		this.rootClazz = Objects.requireNonNull(rootClazz, "rootClazz must not be null");
+		this.scopedInstances = new ScopedInstances();
+		this.proxyManager = new ProxyManager();
+		this.classesResolver = new ClassesResolver(profiles);
 	}
 
-    synchronized Context<T> getContext() {
-    	if (this.context == null) {
-        	this.context = new Context<T>(this, rootClazz, scopedInstances, proxyManager, classesResolver);
-    	}
-    	return this.context;
-    }
+	synchronized Context<T> getContext() {
+		if (this.context == null) {
+			this.context = new Context<>(this, rootClazz, scopedInstances, proxyManager, classesResolver);
+		}
+		return this.context;
+	}
 
-	public <T> T getInstance(Class<T> clazz) {
+	public <X> X getInstance(Class<X> clazz) {
 		return getContext().getOrCreateInstance(clazz);
-    }
+	}
 
 	public void shutdown() {
-		getContext().shutdown();
+		if (this.context != null) {
+			this.context.shutdown();
+		}
 	}
 
+	@Override
+	public void close() {
+		shutdown();
+	}
 }

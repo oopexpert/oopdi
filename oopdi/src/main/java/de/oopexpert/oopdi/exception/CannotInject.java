@@ -2,7 +2,7 @@ package de.oopexpert.oopdi.exception;
 
 public class CannotInject extends RuntimeException {
 
-	public CannotInject(String string, RuntimeException e) {
+	public CannotInject(String string, Throwable e) {
 		super(string, e);
 	}
 
