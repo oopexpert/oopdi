@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0 (2026-09-20)
+
+- Merge branch 'main' of https://github.com/oopexpert/oopdi.git into main
+- feat: metadata caching
+
 ## 0.2.0 (2026-09-01)
 
 - feat: merge release workflows and publish to GitHub Packages
