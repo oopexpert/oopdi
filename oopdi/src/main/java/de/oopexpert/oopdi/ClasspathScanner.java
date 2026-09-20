@@ -2,12 +2,19 @@ package de.oopexpert.oopdi;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.annotation.Annotation;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class ClasspathScanner {
+
+	private static final Logger log = LoggerFactory.getLogger(ClasspathScanner.class);
 
 	private static final char PACKAGE_SEPARATOR = '.';
 	private static final char PATH_SEPARATOR = '/';
@@ -27,6 +34,99 @@ public class ClasspathScanner {
 			return classes;
 		} catch (ClassNotFoundException | IOException e) {
 			throw new RuntimeException("Failed to scan classpath for subclasses of '" + parentClass.getName() + "' in package '" + packageName + "'", e);
+		}
+	}
+
+	/**
+	 * Scans the entire classpath (no parent-class/package restriction, starting from every
+	 * classpath entry's root) for classes carrying the given annotation. Used for background
+	 * metadata warmup, which needs to discover all {@code @Injectable} classes up front rather
+	 * than lazily per already-known hint type (unlike {@link #findDerivedClasses}).
+	 */
+	public Set<Class<?>> findAllAnnotatedClasses(Class<? extends Annotation> annotation) {
+		try {
+			var classes = new HashSet<Class<?>>();
+			for (var classpathEntry : getClassPathEntries()) {
+				classes.addAll(getAnnotatedClassesInClasspath(annotation, classpathEntry));
+			}
+			return classes;
+		} catch (IOException e) {
+			throw new RuntimeException("Failed to scan classpath for classes annotated with '" + annotation.getName() + "'", e);
+		}
+	}
+
+	private Set<Class<?>> getAnnotatedClassesInClasspath(Class<? extends Annotation> annotation, String classpathEntry) throws IOException {
+		var classes = new HashSet<Class<?>>();
+
+		if (classpathEntry.endsWith(SUFFIX_JAR)) {
+			classes.addAll(getAnnotatedClassesFromJar(annotation, classpathEntry));
+		} else {
+			var root = new File(classpathEntry);
+			if (root.isFile() && classpathEntry.endsWith(SUFFIX_CLASS)) {
+				findAnnotatedClassInFile(annotation, "", root).ifPresent(classes::add);
+			} else if (root.isDirectory()) {
+				classes.addAll(getAnnotatedClassesFromDirectory(annotation, "", root));
+			}
+		}
+		return classes;
+	}
+
+	private Set<Class<?>> getAnnotatedClassesFromJar(Class<? extends Annotation> annotation, String classpathEntry) throws IOException {
+		var classes = new HashSet<Class<?>>();
+		try (var jarFile = new JarFile(classpathEntry)) {
+			var entries = jarFile.entries();
+			while (entries.hasMoreElements()) {
+				var jarEntry = entries.nextElement();
+				var jarEntryName = jarEntry.getName();
+				if (jarEntryName.endsWith(SUFFIX_CLASS)) {
+					var className = toClassName(jarEntryName);
+					tryLoadIfAnnotated(annotation, className).ifPresent(classes::add);
+				}
+			}
+		}
+		return classes;
+	}
+
+	private Set<Class<?>> getAnnotatedClassesFromDirectory(Class<? extends Annotation> annotation, String packageName, File directory) {
+		var classes = new HashSet<Class<?>>();
+		var files = directory.listFiles();
+		if (files != null) {
+			for (var file : files) {
+				if (file.isDirectory()) {
+					String childPackage = packageName.isEmpty() ? file.getName() : packageName + PACKAGE_SEPARATOR + file.getName();
+					classes.addAll(getAnnotatedClassesFromDirectory(annotation, childPackage, file));
+				} else {
+					findAnnotatedClassInFile(annotation, packageName, file).ifPresent(classes::add);
+				}
+			}
+		}
+		return classes;
+	}
+
+	private Optional<Class<?>> findAnnotatedClassInFile(Class<? extends Annotation> annotation, String packageName, File file) {
+		if (!file.getName().endsWith(SUFFIX_CLASS)) {
+			return Optional.empty();
+		}
+		var simpleName = file.getName().substring(0, file.getName().length() - SUFFIX_CLASS.length());
+		var className = packageName.isEmpty() ? simpleName : packageName + PACKAGE_SEPARATOR + simpleName;
+		return tryLoadIfAnnotated(annotation, className);
+	}
+
+	/**
+	 * Loads a candidate by name (non-initializing) and checks for the given annotation, treating
+	 * any failure to even load the class file as "not a match" rather than aborting the whole
+	 * scan. Some class-file entries encountered during a classpath-wide scan are not ordinary
+	 * classes at all (for example {@code module-info.class}, which the JVM rejects with a
+	 * {@link LinkageError} because it carries the {@code ACC_MODULE} access flag) — a single such
+	 * entry must not crash the background warmup job.
+	 */
+	private Optional<Class<?>> tryLoadIfAnnotated(Class<? extends Annotation> annotation, String className) {
+		try {
+			var clazz = loadWithoutInitializing(className, getClass());
+			return clazz.isAnnotationPresent(annotation) ? Optional.of(clazz) : Optional.empty();
+		} catch (ClassNotFoundException | LinkageError e) {
+			log.debug("Skipping unloadable classpath entry '{}' during annotation scan", className, e);
+			return Optional.empty();
 		}
 	}
 

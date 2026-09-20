@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -23,17 +24,15 @@ import de.oopexpert.oopdi.exception.MultipleConstructors;
  */
 public class MetadataRepository {
 
-	public static final String CACHE_SYSTEM_PROPERTY = "oopdi.cache.metadata";
-
 	private final boolean cacheEnabled;
 	private final ConcurrentHashMap<Class<?>, ClassMetadata> cache = new ConcurrentHashMap<>();
 
 	public MetadataRepository() {
-		this(Boolean.getBoolean(CACHE_SYSTEM_PROPERTY));
+		this(MetadataMode.fromSystemProperty());
 	}
 
-	public MetadataRepository(boolean cacheEnabled) {
-		this.cacheEnabled = cacheEnabled;
+	public MetadataRepository(MetadataMode mode) {
+		this.cacheEnabled = Objects.requireNonNull(mode, "mode must not be null").isCacheEnabled();
 	}
 
 	public boolean isCacheEnabled() {

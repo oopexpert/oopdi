@@ -3,9 +3,9 @@ package de.oopexpert.oopdi;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-final class TestSystemProperties {
+public final class TestSystemProperties {
 
-    interface Scope extends AutoCloseable {
+    public interface Scope extends AutoCloseable {
         @Override
         void close();
     }
@@ -13,7 +13,7 @@ final class TestSystemProperties {
     private TestSystemProperties() {
     }
 
-    static Scope withProperties(Map<String, String> newValues) {
+    public static Scope withProperties(Map<String, String> newValues) {
         Map<String, String> oldValues = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : newValues.entrySet()) {
             String key = entry.getKey();
