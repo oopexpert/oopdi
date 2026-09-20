@@ -3,8 +3,10 @@ package de.oopexpert.oopdi;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import de.oopexpert.oopdi.exception.MultipleConstructors;
 import de.oopexpert.teststructure.ClassAbstractInjectableWithSideEffect;
 import de.oopexpert.teststructure.ClassFieldAccessibilityTarget;
+import de.oopexpert.teststructure.ClassMultipleConstructorsWithSideEffect;
 import de.oopexpert.teststructure.ClassNotInjectableWithSideEffect;
 import de.oopexpert.teststructure.ClassSetSideEffectRoot;
 import de.oopexpert.teststructure.ClassSetSideEffectTracker;
@@ -64,6 +66,26 @@ class TestSecurityValidation {
 
         Assertions.assertEquals(0, ClassSetSideEffectTracker.staticInitCount.get(),
             "Classpath scan must not initialize a class that ends up filtered out by profile mismatch");
+
+    }
+
+    @Test
+    void testMultipleConstructorsClassConstructorNotInvokedBeforeValidation() {
+
+        // MetadataRepository is the single place validating the "exactly one constructor"
+        // invariant; both proxy creation and real object instantiation go through it, so the
+        // failure must surface as MultipleConstructors and neither constructor may ever run.
+        ClassMultipleConstructorsWithSideEffect.constructorCallCount.set(0);
+
+        OOPDI<ClassMultipleConstructorsWithSideEffect> oopdi = new OOPDI<>(ClassMultipleConstructorsWithSideEffect.class);
+
+        MultipleConstructors ex = Assertions.assertThrows(MultipleConstructors.class,
+            () -> oopdi.getInstance(ClassMultipleConstructorsWithSideEffect.class),
+            "Requesting a class with more than one constructor must throw MultipleConstructors before construction");
+
+        Assertions.assertTrue(ex.getMessage().contains(ClassMultipleConstructorsWithSideEffect.class.getName()));
+        Assertions.assertEquals(0, ClassMultipleConstructorsWithSideEffect.constructorCallCount.get(),
+            "Neither constructor may run as a side effect of proxy or real object creation");
 
     }
 

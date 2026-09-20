@@ -27,12 +27,10 @@ public class Context<T> implements DependencyResolutionContext {
 	private final ThreadLocal<Boolean> directConstructionPhase = ThreadLocal.withInitial(() -> false);
 
 	public Context(OOPDI<T> oopdi, Class<T> rootClazz, ScopedInstances scopedInstances,
-			ProxyManager proxyManager, ClassesResolver classesResolver) {
+			ProxyManager proxyManager, ClassesResolver classesResolver, MetadataRepository metadataRepository) {
 		this.scopedInstances = Objects.requireNonNull(scopedInstances);
 		this.proxyManager = Objects.requireNonNull(proxyManager);
-		
-		// 1. MetadataRepository zentral instanziieren (prüft intern System.getProperty)
-		this.metadataRepository = new MetadataRepository();
+		this.metadataRepository = Objects.requireNonNull(metadataRepository, "metadataRepository must not be null");
 
 		this.resolverPipeline = new DependencyResolverPipeline(List.of(
 				new VariableDependencyResolver(),
@@ -40,7 +38,6 @@ public class Context<T> implements DependencyResolutionContext {
 				new InstanceDependencyResolver()
 		));
 
-		// 2. An die Komponenten übergeben
 		this.lifecycleProcessor = new LifecycleProcessor(this, oopdi, metadataRepository);
 		this.instanceFactory = new InstanceFactory(this, classesResolver, oopdi, metadataRepository);
 

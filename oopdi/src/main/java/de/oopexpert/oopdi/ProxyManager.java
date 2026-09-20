@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import de.oopexpert.oopdi.metadata.MetadataRepository;
 import de.oopexpert.oopdi.proxy.ByteBuddyProxyFactory;
 import de.oopexpert.oopdi.proxy.RequestScopeManager;
 import de.oopexpert.oopdi.proxy.ScopedSupplierFactory;
@@ -19,14 +20,15 @@ public class ProxyManager {
 	private final ByteBuddyProxyFactory proxyFactory;
 	private final ScopedSupplierFactory supplierFactory;
 
-	public ProxyManager() {
-		this(new RequestScopeManager(), new ScopedSupplierFactory());
+	public ProxyManager(MetadataRepository metadataRepository) {
+		this(new RequestScopeManager(), new ScopedSupplierFactory(), metadataRepository);
 	}
 
-	public ProxyManager(RequestScopeManager requestScopeManager, ScopedSupplierFactory supplierFactory) {
+	public ProxyManager(RequestScopeManager requestScopeManager, ScopedSupplierFactory supplierFactory,
+			MetadataRepository metadataRepository) {
 		Objects.requireNonNull(requestScopeManager, "requestScopeManager must not be null");
 		this.supplierFactory = Objects.requireNonNull(supplierFactory, "supplierFactory must not be null");
-		this.proxyFactory = new ByteBuddyProxyFactory(requestScopeManager);
+		this.proxyFactory = new ByteBuddyProxyFactory(requestScopeManager, metadataRepository);
 	}
 
 	public <B> B proxyIfNotExists(B instance) {

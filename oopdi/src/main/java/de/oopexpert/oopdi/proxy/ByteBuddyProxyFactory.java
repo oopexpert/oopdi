@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 import de.oopexpert.oopdi.exception.CannotInject;
+import de.oopexpert.oopdi.metadata.MetadataRepository;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
 import net.bytebuddy.implementation.InvocationHandlerAdapter;
@@ -26,22 +27,26 @@ public class ByteBuddyProxyFactory {
 	);
 
 	private final RequestScopeManager requestScopeManager;
+	private final MetadataRepository metadataRepository;
 
-	public ByteBuddyProxyFactory(RequestScopeManager requestScopeManager) {
+	public ByteBuddyProxyFactory(RequestScopeManager requestScopeManager, MetadataRepository metadataRepository) {
 		this.requestScopeManager = Objects.requireNonNull(requestScopeManager, "requestScopeManager must not be null");
+		this.metadataRepository = Objects.requireNonNull(metadataRepository, "metadataRepository must not be null");
 	}
 
+	/**
+	 * The primary constructor (which one to mimic for the proxy stub) is exclusively determined
+	 * by {@link MetadataRepository}, which is also the single place validating the "exactly one
+	 * constructor" invariant (throws {@link de.oopexpert.oopdi.exception.MultipleConstructors}).
+	 * This factory must not re-derive or re-validate that itself.
+	 */
 	public <T> T createProxy(Class<T> clazz, Supplier<T> realObjectSupplier) {
-		Constructor<?>[] constructors = clazz.getDeclaredConstructors();
+		Constructor<?> primaryConstructor = metadataRepository.getMetadata(clazz).getPrimaryConstructor();
 
-		if (constructors.length == 0) {
+		if (primaryConstructor == null) {
 			return createProxyWithDefaultConstructor(clazz, realObjectSupplier);
-		} else if (constructors.length == 1) {
-			return createProxyWithSingleConstructor(clazz, constructors[0], realObjectSupplier);
-		} else {
-			throw new CannotInject("Multiple constructors found in class '" + clazz.getName()
-					+ "'. Exactly one constructor is required for dependency injection.");
 		}
+		return createProxyWithSingleConstructor(clazz, primaryConstructor, realObjectSupplier);
 	}
 
 	private <T> T createProxyWithDefaultConstructor(Class<T> clazz, Supplier<T> realObjectSupplier) {
