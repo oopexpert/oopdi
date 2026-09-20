@@ -5,7 +5,8 @@ import java.util.List;
 import java.util.Objects;
 
 import de.oopexpert.oopdi.exception.CannotInject;
-import de.oopexpert.oopdi.parser.TypeParserRegistry;
+import de.oopexpert.oopdi.metadata.ClassMetadata;
+import de.oopexpert.oopdi.metadata.MetadataRepository;
 import de.oopexpert.oopdi.resolver.DependencyResolutionContext;
 import de.oopexpert.oopdi.resolver.DependencyResolverPipeline;
 import de.oopexpert.oopdi.resolver.FieldInjectionPoint;
@@ -21,6 +22,7 @@ public class Context<T> implements DependencyResolutionContext {
 	private final DependencyResolverPipeline resolverPipeline;
 	private final InstanceFactory instanceFactory;
 	private final LifecycleProcessor lifecycleProcessor;
+	private final MetadataRepository metadataRepository;
 
 	private final ThreadLocal<Boolean> directConstructionPhase = ThreadLocal.withInitial(() -> false);
 
@@ -28,17 +30,23 @@ public class Context<T> implements DependencyResolutionContext {
 			ProxyManager proxyManager, ClassesResolver classesResolver) {
 		this.scopedInstances = Objects.requireNonNull(scopedInstances);
 		this.proxyManager = Objects.requireNonNull(proxyManager);
+		
+		// 1. MetadataRepository zentral instanziieren (prüft intern System.getProperty)
+		this.metadataRepository = new MetadataRepository();
+
 		this.resolverPipeline = new DependencyResolverPipeline(List.of(
-				new VariableDependencyResolver(new TypeParserRegistry()),
+				new VariableDependencyResolver(),
 				new SetDependencyResolver(classesResolver),
 				new InstanceDependencyResolver()
 		));
-		this.lifecycleProcessor = new LifecycleProcessor(this, oopdi);
-		this.instanceFactory = new InstanceFactory(this, classesResolver, oopdi);
+
+		// 2. An die Komponenten übergeben
+		this.lifecycleProcessor = new LifecycleProcessor(this, oopdi, metadataRepository);
+		this.instanceFactory = new InstanceFactory(this, classesResolver, oopdi, metadataRepository);
 
 		this.proxyManager.proxyIfNotExists(rootClazz, instanceFactory::validateEligible, this::getOrCreate);
 	}
-	
+
 	@Override
 	public <A> A getOrCreate(Class<A> clazz) {
 		instanceFactory.validateEligible(clazz);
@@ -48,6 +56,7 @@ public class Context<T> implements DependencyResolutionContext {
 			lifecycleProcessor.executePostConstruct(instance);
 		}, directConstructionPhase);
 	}
+
 
 	@Override
 	public <A> A getOrCreateProxy(Class<A> clazz) {
@@ -59,27 +68,19 @@ public class Context<T> implements DependencyResolutionContext {
 		return Boolean.TRUE.equals(directConstructionPhase.get());
 	}
 
-	public <A> A getOrCreateInstance(Class<A> clazz) {
-		return getOrCreateProxy(clazz);
-	}
-
 	public void injectFields(Object instance) {
-		Class<?> current = instance.getClass();
-		while (current != null && current != Object.class) {
-			for (Field field : current.getDeclaredFields()) {
-				InjectionPoint point = new FieldInjectionPoint(field);
-				if (resolverPipeline.supports(point)) {
-					field.setAccessible(true);
-					Object resolvedValue = resolverPipeline.resolve(point, this);
-					try {
-						field.set(instance, resolvedValue);
-					} catch (IllegalAccessException e) {
-						throw new CannotInject("Feldinjektion fehlgeschlagen: " + field.getName()
-								+ " in " + current.getName(), e);
-					}
+		ClassMetadata metadata = metadataRepository.getMetadata(instance.getClass());
+		for (InjectionPoint point : metadata.getFieldInjectionPoints()) {
+			if (resolverPipeline.supports(point)) {
+				Field field = ((FieldInjectionPoint) point).field();
+				field.setAccessible(true);
+				Object resolvedValue = resolverPipeline.resolve(point, this);
+				try {
+					field.set(instance, resolvedValue);
+				} catch (IllegalAccessException e) {
+					throw new CannotInject("Feldinjektion fehlgeschlagen: " + field.getName(), e);
 				}
 			}
-			current = current.getSuperclass();
 		}
 	}
 

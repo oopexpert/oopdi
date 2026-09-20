@@ -18,4 +18,5 @@ public sealed interface InjectionPoint permits FieldInjectionPoint, ParameterInj
     <A extends Annotation> Optional<A> findAnnotation(Class<A> annotationClass);
 
     boolean hasAnnotation(Class<? extends Annotation> annotationClass);
+    
 }

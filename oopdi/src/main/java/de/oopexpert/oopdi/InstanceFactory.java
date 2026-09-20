@@ -13,8 +13,9 @@ import org.slf4j.LoggerFactory;
 
 import de.oopexpert.oopdi.annotation.Injectable;
 import de.oopexpert.oopdi.exception.CannotInject;
-import de.oopexpert.oopdi.exception.MultipleConstructors;
 import de.oopexpert.oopdi.exception.UnderConstruction;
+import de.oopexpert.oopdi.metadata.ClassMetadata;
+import de.oopexpert.oopdi.metadata.MetadataRepository;
 import de.oopexpert.oopdi.resolver.DependencyResolutionContext;
 
 public class InstanceFactory {
@@ -24,13 +25,15 @@ public class InstanceFactory {
 	private final DependencyResolutionContext context;
 	private final ClassesResolver classesResolver;
 	private final OOPDI<?> oopdi;
+	private final MetadataRepository metadataRepository;
 
-	public InstanceFactory(DependencyResolutionContext context, ClassesResolver classesResolver, OOPDI<?> oopdi) {
+	public InstanceFactory(DependencyResolutionContext context, ClassesResolver classesResolver, OOPDI<?> oopdi, MetadataRepository metadataRepository) {
 		this.context = Objects.requireNonNull(context, "context must not be null");
 		this.classesResolver = Objects.requireNonNull(classesResolver, "classesResolver must not be null");
+		this.metadataRepository = Objects.requireNonNull(metadataRepository, "metadataRepository must not be null");
 		this.oopdi = oopdi;
 	}
-
+	
 	public <A> void validateEligible(Class<A> c) {
 		checkInjectableAnnotated(c);
 		checkNonAbstract(c);
@@ -107,13 +110,14 @@ public class InstanceFactory {
 	}
 
 	private Constructor<?> getConstructor(Class<?> c) {
-		var declaredConstructors = c.getDeclaredConstructors();
-		if (declaredConstructors.length > 1) {
-			throw new MultipleConstructors("Multiple constructors for class '" + c.getName() + "'. Cannot decide.");
+		ClassMetadata metadata = metadataRepository.getMetadata(c);
+		Constructor<?> primaryConstructor = metadata.getPrimaryConstructor();
+		if (primaryConstructor == null) {
+			throw new RuntimeException("No accessible constructor found for " + c.getName());
 		}
-		return declaredConstructors[0];
+		return primaryConstructor;
 	}
-
+	
 	private <A> void checkNonAbstract(Class<A> c) {
 		if (Modifier.isAbstract(c.getModifiers())) {
 			throw new RuntimeException("Cannot instantiate Class " + c.getName() + ". It is abstract!");

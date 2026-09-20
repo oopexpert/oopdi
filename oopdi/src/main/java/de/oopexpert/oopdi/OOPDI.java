@@ -26,9 +26,9 @@ public class OOPDI<T> implements AutoCloseable {
 	}
 
 	public <X> X getInstance(Class<X> clazz) {
-		return getContext().getOrCreateInstance(clazz);
+		return getContext().getOrCreateProxy(clazz);
 	}
-
+	
 	public void shutdown() {
 		if (this.context != null) {
 			this.context.shutdown();

@@ -12,6 +12,7 @@ public record FieldInjectionPoint(Field field) implements InjectionPoint {
     @Override public AnnotatedElement getAnnotatedElement() { return field; }
     @Override public Class<?> getDeclaringClass() { return field.getDeclaringClass(); }
 
+    
     @Override
     public <A extends Annotation> Optional<A> findAnnotation(Class<A> annotationClass) {
         return Optional.ofNullable(field.getAnnotation(annotationClass));
@@ -21,4 +22,5 @@ public record FieldInjectionPoint(Field field) implements InjectionPoint {
     public boolean hasAnnotation(Class<? extends Annotation> annotationClass) {
         return field.isAnnotationPresent(annotationClass);
     }
+    
 }
