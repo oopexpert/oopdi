@@ -25,7 +25,7 @@ oopdi/src/test/java/de/oopexpert/teststructure/  ← fixture classes used by tes
 Readme.md                                    ← project README
 ```
 
-Core classes: `OOPDI` (entry point), `Context` (creates/injects/manages beans), `ProxyManager` (Byte Buddy proxies, REQUEST-scope `ThreadLocal`), `ScopedInstances` (maps `Scope → InstancesState`), `InstancesState` (per-scope instance cache + locks), `ClassesResolver` (classpath scan, profile filtering), `Scope` (enum, polymorphic scope selection).
+Core classes: `OOPDI` (entry point, owns the single `MetadataRepository` instance), `Context` (orchestrates instance creation/injection/lifecycle via `InstanceFactory` and `LifecycleProcessor`), `ProxyManager` (Byte Buddy proxies via `proxy.ByteBuddyProxyFactory`, REQUEST-scope `ThreadLocal` via `proxy.RequestScopeManager`), `metadata.MetadataRepository`/`ClassMetadata` (single source of truth for a class's primary constructor, field injection points, `@PostConstruct`/`@PreDestroy` methods), `ScopedInstances` (maps `Scope → InstancesState`), `InstancesState` (per-scope instance cache + locks), `ClassesResolver` (delegates classpath scanning to `ClasspathScanner` and filtering to `InjectableFilter`), `Scope` (enum, polymorphic scope selection).
 
 ## Key Architectural Rules
 
@@ -38,6 +38,7 @@ Core classes: `OOPDI` (entry point), `Context` (creates/injects/manages beans), 
 - Fixed: eligibility validation (`@Injectable` present, non-abstract) now runs before any proxy/real constructor executes (`ProxyManager.proxyIfNotExists(Class, Consumer, Function)` + `Context.validateEligible`), closing the premature-construction gap described in [.github/copilot-instructions.md](.github/copilot-instructions.md).
 - Fixed: `ClassesResolver`'s classpath scan loads candidate classes without initializing them (`Class.forName(name, false, loader)`), so classes filtered out afterward (profile mismatch, abstract) never run their static initializers.
 - Fixed: `Context.processField` only opens reflective access (`setAccessible(true)`) for fields that carry an inject annotation, not for every declared field.
+- Fixed: the "exactly one constructor" invariant (`MultipleConstructors`) is now validated in exactly one place, `metadata.MetadataRepository`; `proxy.ByteBuddyProxyFactory` no longer duplicates that check itself and asks `MetadataRepository` for the primary constructor instead.
 
 Full architecture, concurrency, and lifecycle details: see [.github/copilot-instructions.md](.github/copilot-instructions.md).
 

@@ -52,6 +52,8 @@ Recent verified insights that must stay reflected in helper docs:
 - Remaining known gap (fix planned, Phase C of session plan): `Context.processField` calls `field.setAccessible(true)` unconditionally before checking which inject annotation is present.
 - Fixed: `ClassesResolver` classpath scan (`findAssignableClassInJarEntry`/`findAssignableClassInFile`) now loads candidate classes via `Class.forName(name, false, classLoader)` (non-initializing) instead of the eager-initializing 1-arg form. Classes that are scanned but end up filtered out (profile mismatch, abstract) no longer have their static initializers run as a side effect of the scan; a class is only initialized by the JVM later, when it is actually instantiated. Test: `TestSecurityValidation.testInjectSetClasspathScanDoesNotInitializeProfileFilteredCandidate` (uses a separate `ClassSetSideEffectTracker` class to observe the side effect without itself referencing/initializing the candidate class).
 - Fixed: `Context.processField` no longer calls `field.setAccessible(true)` unconditionally for every declared field; the call now happens only inside the branch matching the annotation actually present (`@InjectInstance`/`@InjectSet`/`@InjectVariable`), narrowing reflective access to fields the framework actually injects. Note: `Field#setAccessible`'s override flag is per-`Field`-instance and not observable via a freshly obtained `Field` object, so this fix has no black-box regression test beyond the functional injection tests already in place (`TestSecurityValidation.testFieldProcessingStillInjectsAnnotatedFieldsCorrectly`).
+- `metadata.MetadataRepository` (introduced by the "metadata caching" commit, `oopdi.cache.metadata` system property toggles caching) is the **single source of truth** for a class's primary constructor, field injection points, and `@PostConstruct`/`@PreDestroy` methods (`ClassMetadata`). Every consumer that needs "which constructor to use" — real object instantiation (`InstanceFactory.getConstructor`) and Byte Buddy proxy stub generation (`proxy.ByteBuddyProxyFactory.createProxy`) — goes through `MetadataRepository.getMetadata(Class)` instead of re-deriving that information itself.
+- Fixed: the "exactly one constructor" invariant (`MultipleConstructors`) was silently dropped from `InstanceFactory` during the metadata-caching refactor, leaving `ByteBuddyProxyFactory`'s own (inconsistent, `CannotInject`-throwing) `getDeclaredConstructors()` check as the only enforcement. Restored: `MetadataRepository.determinePrimaryConstructor` now throws `MultipleConstructors` when a class declares more than one constructor; `ByteBuddyProxyFactory` no longer re-derives or re-validates the constructor itself, it asks `MetadataRepository` for the primary constructor. `MetadataRepository` is created once in `OOPDI`'s constructor and passed down to both `ProxyManager` and `Context` (previously instantiated separately, lazily, inside `Context`). Test: `TestSecurityValidation.testMultipleConstructorsClassConstructorNotInvokedBeforeValidation` (fixture `ClassMultipleConstructorsWithSideEffect`, two constructors, verifies neither runs before `MultipleConstructors` is thrown).
 
 Copilot must continuously validate its own reasoning against verified project facts.  
 Verified facts are exclusively those derived from:
@@ -88,12 +90,16 @@ src/test/java/de/oopexpert/teststructure/  ← fixture classes used by tests
 Every managed bean is wrapped in a **Byte Buddy subclass proxy** at registration time. The proxy intercepts all method calls, resolves the correct real instance for the bean's scope, and delegates. Callers always hold a proxy reference, never the real object directly.
 
 Key classes:
-- `OOPDI` — entry point; holds a single `Context` (lazy, synchronized)
-- `Context` — creates, injects, and manages real objects
-- `ProxyManager` — Byte Buddy proxy creation and registry; hosts the REQUEST-scope `ThreadLocal`
+- `OOPDI` — entry point; holds a single `Context` (lazy, synchronized); owns the single `MetadataRepository` instance, created eagerly and passed to both `ProxyManager` and `Context`
+- `Context` — orchestrates instance creation/injection/lifecycle; delegates to `InstanceFactory`, `LifecycleProcessor`, and a `resolver.DependencyResolverPipeline`
+- `InstanceFactory` — validates eligibility (`@Injectable`, non-abstract), constructs real objects via reflection, resolves constructor parameters
+- `LifecycleProcessor` — invokes `@PostConstruct`/`@PreDestroy`, using `MetadataRepository` to look up lifecycle methods
+- `metadata.MetadataRepository` / `metadata.ClassMetadata` — single source of truth for a class's primary constructor, field injection points, and lifecycle methods (see insight above); optional caching via `oopdi.cache.metadata` system property
+- `resolver` package (`DependencyResolverPipeline`, `InjectionPoint`/`FieldInjectionPoint`/`ParameterInjectionPoint`, `impl.{Variable,Set,Instance}DependencyResolver`) — pluggable field/parameter injection strategies
+- `ProxyManager` — Byte Buddy proxy creation and registry; delegates actual proxy-class generation to `proxy.ByteBuddyProxyFactory` and scoped-supplier creation to `proxy.ScopedSupplierFactory`; hosts the REQUEST-scope `ThreadLocal` via `proxy.RequestScopeManager`
 - `ScopedInstances` — maps `Scope → InstancesState`; THREAD scope keyed by `Thread` object
 - `InstancesState` — stores instances and construction-cycle sentinel for one scope/thread slot
-- `ClassesResolver` — classpath scan to find concrete `@Injectable` subclasses; profile filtering
+- `ClassesResolver` — determines the relevant concrete `@Injectable` class for a given type; delegates classpath scanning to `ClasspathScanner` and profile/injectable filtering to `InjectableFilter`
 - `Scope` (enum) — each variant selects its own `InstancesState` (polymorphic, no switch)
 
 ## Scope Semantics
@@ -174,6 +180,11 @@ Test classes live under `de.oopexpert.teststructure`:
 | `ClassWithPreDestroy` | GLOBAL | Tests `@PreDestroy` invocation on `shutdown()` |
 | `ClassPreDestroyBase` (abstract) | GLOBAL | Tests `@PreDestroy` superclass traversal |
 | `ClassPreDestroyChild` | GLOBAL | Concrete subclass of ClassPreDestroyBase |
+| `ClassNotInjectableWithSideEffect` | — | Not `@Injectable`; tracks constructor calls to verify eligibility validation runs before construction |
+| `ClassAbstractInjectableWithSideEffect` | — | Abstract; tracks constructor calls to verify abstractness validation runs before construction |
+| `ClassSetSideEffectRoot` / `ClassSetSideEffectTracker` | GLOBAL | Verifies `@InjectSet` classpath scan does not initialize profile-filtered candidates |
+| `ClassFieldAccessibilityTarget` | GLOBAL | Regression guard for narrowed `field.setAccessible(true)` scope |
+| `ClassMultipleConstructorsWithSideEffect` | — | Declares two constructors; tracks constructor calls to verify `MetadataRepository` throws `MultipleConstructors` before either constructor runs |
 
 ## Git Workflow
 
