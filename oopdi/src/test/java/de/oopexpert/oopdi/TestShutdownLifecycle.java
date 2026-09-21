@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import de.oopexpert.oopdi.exception.ContainerShutdown;
+import de.oopexpert.teststructure.ClassA;
 import de.oopexpert.teststructure.ClassFailingPostConstruct;
 import de.oopexpert.teststructure.ClassFailingPreDestroy;
 import de.oopexpert.teststructure.ClassWithPreDestroy;
@@ -26,6 +27,18 @@ class TestShutdownLifecycle {
         oopdi.shutdown();
 
         Assertions.assertEquals(ShutdownStatus.SHUTDOWN, oopdi.getShutdownStatus());
+    }
+
+    @Test
+    void testShutdownBeforeFirstUseIsNotSilentlyLost() {
+        OOPDI<ClassA> oopdi = new OOPDI<>(ClassA.class);
+
+        oopdi.shutdown();
+
+        Assertions.assertEquals(ShutdownStatus.SHUTDOWN, oopdi.getShutdownStatus(),
+            "Shutdown with nothing to destroy still counts as shut down");
+        Assertions.assertThrows(ContainerShutdown.class, () -> oopdi.getInstance(ClassA.class),
+            "Beans created after shutdown was requested must fail fast, even if no Context existed yet");
     }
 
     @Test

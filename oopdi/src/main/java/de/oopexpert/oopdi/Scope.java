@@ -33,7 +33,11 @@ public enum Scope {
 
 		@Override
 		public <T> Supplier<T> createSupplier(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
-			return threadCachingSupplier(clazz, realObjectCreator);
+			// Deliberately no supplier-level ThreadLocal cache (unlike GLOBAL's AtomicReference):
+			// per-thread caching already lives canonically in ScopedInstances.threadInstanceMaps,
+			// and a second ThreadLocal here would pin beans for the thread's lifetime instead of
+			// the container's (pool-thread leak), with no shutdown hook able to reach it.
+			return () -> realObjectCreator.apply(clazz);
 		}
 
 		@Override
@@ -78,9 +82,12 @@ public enum Scope {
 
 	/**
 	 * Creates the real-object supplier for the given bean class, polymorphically per scope
-	 * (no switch statements): GLOBAL caches process-wide, THREAD caches per thread, LOCAL and
-	 * REQUEST re-resolve on every call (LOCAL needs a fresh instance per call; REQUEST is
-	 * thread/call-depth scoped via the request manager).
+	 * (no switch statements): GLOBAL caches process-wide (container-bound via the proxy
+	 * registry, so container garbage collection releases it); THREAD, LOCAL and REQUEST
+	 * re-resolve on every call - THREAD through the canonical per-thread state in
+	 * {@code ScopedInstances} (deliberately no supplier-level {@code ThreadLocal}, which would
+	 * pin beans for pooled threads beyond shutdown), LOCAL for a fresh instance per call,
+	 * REQUEST thread/call-depth scoped via the request manager.
 	 */
 	public abstract <T> Supplier<T> createSupplier(Class<T> clazz, Function<Class<T>, T> realObjectCreator);
 	
@@ -107,18 +114,6 @@ public enum Scope {
 						cache.set(value);
 					}
 				}
-			}
-			return value;
-		};
-	}
-
-	private static <T> Supplier<T> threadCachingSupplier(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
-		var cache = new ThreadLocal<T>();
-		return () -> {
-			T value = cache.get();
-			if (value == null) {
-				value = realObjectCreator.apply(clazz);
-				cache.set(value);
 			}
 			return value;
 		};

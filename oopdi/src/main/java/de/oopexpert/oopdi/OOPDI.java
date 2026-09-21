@@ -2,6 +2,7 @@ package de.oopexpert.oopdi;
 
 import java.util.Objects;
 
+import de.oopexpert.oopdi.exception.ContainerShutdown;
 import de.oopexpert.oopdi.exception.WarmupFailed;
 import de.oopexpert.oopdi.metadata.MetadataMode;
 import de.oopexpert.oopdi.metadata.MetadataRepository;
@@ -20,6 +21,15 @@ public class OOPDI<T> implements AutoCloseable {
 	private final MetadataWarmup metadataWarmup;
 
 	private volatile Context<T> context;
+
+	/**
+	 * Remembers a shutdown request that arrived before any {@code Context} existed. Without
+	 * this, {@link #shutdown()} on a never-used container would silently do nothing and a
+	 * later {@link #getInstance(Class)} would serve beans from a container that was already
+	 * shut down. Volatile for safe publication; only ever written inside the synchronized
+	 * {@link #shutdown()} and read inside the synchronized {@link #getContext()}.
+	 */
+	private volatile boolean shutdownRequested;
 
 	public OOPDI(Class<T> rootClazz, String... profiles) {
 		this(rootClazz, new ClasspathScanner(), profiles);
@@ -53,6 +63,9 @@ public class OOPDI<T> implements AutoCloseable {
 	synchronized Context<T> getContext() {
 		checkWarmupNotFailedFast();
 		if (this.context == null) {
+			if (shutdownRequested) {
+				throw new ContainerShutdown("Container has been shut down before its first use; no beans can be created.");
+			}
 			this.context = new Context<>(this, rootClazz, scopedInstances, proxyManager, classesResolver, metadataRepository);
 		}
 		return this.context;
@@ -77,17 +90,23 @@ public class OOPDI<T> implements AutoCloseable {
 	/**
 	 * Status of the container shutdown, mirroring {@link #getWarmupStatus()}. Always
 	 * {@link ShutdownStatus#ACTIVE} until {@link #shutdown()} is called; afterwards one of the
-	 * terminal states (or {@link ShutdownStatus#SHUTTING_DOWN} while it is in progress).
+	 * terminal states (or {@link ShutdownStatus#SHUTTING_DOWN} while it is in progress). A
+	 * shutdown requested before first use (no {@code Context} exists yet) reports
+	 * {@link ShutdownStatus#SHUTDOWN} — there is nothing to destroy.
 	 */
 	public ShutdownStatus getShutdownStatus() {
-		return this.context != null ? this.context.getShutdownStatus() : ShutdownStatus.ACTIVE;
+		if (this.context != null) {
+			return this.context.getShutdownStatus();
+		}
+		return shutdownRequested ? ShutdownStatus.SHUTDOWN : ShutdownStatus.ACTIVE;
 	}
 
 	public <X> X getInstance(Class<X> clazz) {
 		return getContext().getOrCreateProxy(clazz);
 	}
 	
-	public void shutdown() {
+	public synchronized void shutdown() {
+		shutdownRequested = true;
 		if (this.context != null) {
 			this.context.shutdown();
 		}

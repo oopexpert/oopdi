@@ -88,6 +88,11 @@ public class InstanceFactory {
 				throw new UnderConstruction(c.getName() + " is still under construction.");
 			}
 			scopedMap.markUnderConstruction(c);
+			// Save/restore (not set/reset): resolutions nest - an outer chain resolving its 2nd+
+			// constructor parameter after a nested chain finished must still observe "in direct
+			// construction", otherwise nested dependencies would resolve as proxies instead of
+			// real objects. A null/outermost previous value removes the entry (no pool leak).
+			Boolean previousPhase = directConstructionPhase.get();
 			directConstructionPhase.set(true);
 			try {
 				return instanciateWith(getConstructor(c));
@@ -96,7 +101,11 @@ public class InstanceFactory {
 			} catch (Exception e) {
 				throw new CannotInject("Failed to instantiate class " + c.getName(), e);
 			} finally {
-				directConstructionPhase.set(false);
+				if (previousPhase == null) {
+					directConstructionPhase.remove();
+				} else {
+					directConstructionPhase.set(previousPhase);
+				}
 				scopedMap.unmarkUnderConstruction(c);
 			}
 		}

@@ -9,6 +9,8 @@ import de.oopexpert.oopdi.exception.NoClassesLeftAfterFiltering;
 import de.oopexpert.teststructure.ClassB;
 import de.oopexpert.teststructure.ClassB1;
 import de.oopexpert.teststructure.ClassB2;
+import de.oopexpert.teststructure.ClassNestedDepB;
+import de.oopexpert.teststructure.ClassNestedOuter;
 import de.oopexpert.teststructure.ClassRoot;
 import de.oopexpert.teststructure.ClassSetEmptyRoot;
 
@@ -65,6 +67,22 @@ class TestResolverAndSet {
         Assertions.assertThrows(NoClassesLeftAfterFiltering.class,
             () -> oopdi.getInstance(ClassB2.class).getI(),
             "ClassB2 requires profile1 and should fail when no profile is active");
+
+    }
+
+    @Test
+    void testNestedFieldInjectionResolvesRealObjectNotProxy() {
+
+        // The field injection of the nested bean runs while the outer construction chain is
+        // still in its direct-construction phase; it must therefore resolve the real object
+        // (exact class), not a proxy (ByteBuddy subclass). Before the save/restore fix, the
+        // nested chain's finally-block reset the flag and the field ended up holding a proxy.
+        OOPDI<ClassNestedOuter> oopdi = new OOPDI<>(ClassNestedOuter.class);
+
+        ClassNestedDepB depB = oopdi.getInstance(ClassNestedOuter.class).getDepA().getDepB();
+
+        Assertions.assertSame(ClassNestedDepB.class, depB.getClass(),
+            "Field injection inside a nested construction chain must yield the real object");
 
     }
 

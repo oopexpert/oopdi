@@ -31,7 +31,7 @@ public class Context<T> implements InternalResolutionContext {
 	private final LifecycleProcessor lifecycleProcessor;
 	private final MetadataRepository metadataRepository;
 
-	private final ThreadLocal<Boolean> directConstructionPhase = ThreadLocal.withInitial(() -> false);
+	private final ThreadLocal<Boolean> directConstructionPhase = new ThreadLocal<>();
 
 	private final AtomicReference<ShutdownStatus> shutdownStatus = new AtomicReference<>(ShutdownStatus.ACTIVE);
 
@@ -128,7 +128,9 @@ public class Context<T> implements InternalResolutionContext {
 	 * destruction runs as a drain loop: snapshots are repeated until a pass finds no
 	 * not-yet-destroyed instances. This terminates because {@link #checkNotShuttingDown()}
 	 * rejects every new request once shutdown has started, so only the already-running,
-	 * finite chains can still add instances.</p>
+	 * finite chains can still add instances. Afterwards the per-thread states are dropped
+	 * ({@code ScopedInstances.clearThreadStates}) so pooled threads stop pinning destroyed
+	 * beans; global state intentionally stays readable.</p>
 	 */
 	public void shutdown() {
 		if (!shutdownStatus.compareAndSet(ShutdownStatus.ACTIVE, ShutdownStatus.SHUTTING_DOWN)) {
@@ -154,6 +156,7 @@ public class Context<T> implements InternalResolutionContext {
 				}
 			} while (progress);
 		} finally {
+			scopedInstances.clearThreadStates();
 			shutdownStatus.set(failures.isEmpty() ? ShutdownStatus.SHUTDOWN : ShutdownStatus.FAILED);
 		}
 		if (!failures.isEmpty()) {

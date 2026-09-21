@@ -43,4 +43,16 @@ public class ScopedInstances {
 		return all;
 	}
 
+	/**
+	 * Drops all per-thread instance states, releasing beans pinned by pooled threads beyond
+	 * their container's shutdown. Called once at the end of {@code Context.shutdown()}, after
+	 * the drain loop destroyed everything (global state intentionally stays: already-resolved
+	 * beans remain readable from the scope cache after shutdown).
+	 */
+	public void clearThreadStates() {
+		synchronized (threadInstanceMaps) {
+			threadInstanceMaps.clear();
+		}
+	}
+
 }
