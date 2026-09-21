@@ -309,6 +309,10 @@ Choose scopes deliberately:
 
 Avoid holding raw references to real objects. Always interact with the injected proxy. This ensures that scope semantics are respected — particularly for LOCAL and REQUEST scopes, where the real object changes between invocations.
 
+### Public API Boundary
+
+The supported public contract consists of the `OOPDI` entry point, the annotations, `DependencyResolutionContext`, the exceptions, and the `MetadataMode`/`ShutdownStatus`/`WarmupStatus` enums. Everything else (notably casts to internal types such as `InternalResolutionContext`, and reflective access to proxies or framework internals) is unsupported territory: it may change without notice, and developers who bypass the public API this way are responsible for keeping their own application consistent. There is deliberately no JPMS enforcement — the boundary is a documented convention, not a technical barrier.
+
 ## Advanced Topics
 
 ### Circular Dependencies
