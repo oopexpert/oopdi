@@ -286,6 +286,8 @@ If more than one method in a class is annotated with `@PostConstruct`, the frame
 
 A single `@PreDestroy` method per class hierarchy (no parameters) declares cleanup logic. Call `oopdi.shutdown()` (or `close()`) once at application teardown: every managed instance is destroyed in reverse creation order, best-effort — a failing cleanup does not prevent the remaining instances from being destroyed; the individual failures are aggregated on the thrown error. Shutdown is idempotent and observable via `oopdi.getShutdownStatus()`. After shutdown has started, no new beans are created anymore: requests fail fast with `ContainerShutdown` instead of producing instances that could never be destroyed again (already-resolved beans stay readable from their scope cache).
 
+REQUEST-scoped beans do not wait for shutdown: they are destroyed when their call chain ends, in reverse creation order with the same best-effort semantics (a failing request-end cleanup is reported without hiding the call's own outcome). LOCAL-scoped beans are call-transient and never cached, so there is nothing to destroy for them.
+
 ## Usage Guidelines
 
 ### Enforcing Encapsulation
