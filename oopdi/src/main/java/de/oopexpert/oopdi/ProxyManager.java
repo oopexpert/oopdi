@@ -19,6 +19,7 @@ public class ProxyManager {
 
 	private final ByteBuddyProxyFactory proxyFactory;
 	private final ScopedSupplierFactory supplierFactory;
+	private final RequestScopeManager requestScopeManager;
 
 	public ProxyManager(RequestScopeManager requestScopeManager, MetadataRepository metadataRepository) {
 		this(requestScopeManager, new ScopedSupplierFactory(), metadataRepository);
@@ -26,9 +27,17 @@ public class ProxyManager {
 
 	public ProxyManager(RequestScopeManager requestScopeManager, ScopedSupplierFactory supplierFactory,
 			MetadataRepository metadataRepository) {
-		Objects.requireNonNull(requestScopeManager, "requestScopeManager must not be null");
+		this.requestScopeManager = Objects.requireNonNull(requestScopeManager, "requestScopeManager must not be null");
 		this.supplierFactory = Objects.requireNonNull(supplierFactory, "supplierFactory must not be null");
 		this.proxyFactory = new ByteBuddyProxyFactory(requestScopeManager, metadataRepository);
+	}
+
+	/**
+	 * The container's request-scope manager, shared with {@code ScopedInstances} so that call
+	 * interception and instance selection operate on the same per-container request state.
+	 */
+	public RequestScopeManager getRequestScopeManager() {
+		return requestScopeManager;
 	}
 
 	public <B> B proxyIfNotExists(B instance) {

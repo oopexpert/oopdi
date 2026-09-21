@@ -50,6 +50,11 @@ public class Context<T> implements InternalResolutionContext {
 		this.lifecycleProcessor = new LifecycleProcessor(this, oopdi, metadataRepository);
 		this.instanceFactory = new InstanceFactory(this, classesResolver, oopdi, metadataRepository);
 
+		// Request-scoped beans die with their call chain: wire the lifecycle processor as the
+		// request-end destroyer (set after construction to avoid a wiring cycle; the volatile
+		// Context publication in OOPDI makes this safely visible).
+		this.proxyManager.getRequestScopeManager().setRequestEndDestroyer(lifecycleProcessor::invokePreDestroy);
+
 		this.proxyManager.proxyIfNotExists(rootClazz, instanceFactory::validateEligible, this::getOrCreate);
 	}
 
