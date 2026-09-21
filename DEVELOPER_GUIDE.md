@@ -673,7 +673,18 @@ mvn test
 
 Testklassen liegen unter `oopdi/src/test/java/de/oopexpert/oopdi/` (ein Feature pro Klasse, z. B.
 `TestScopeBehavior`, `TestLifecycleHooks`), Fixture-Klassen unter
-`oopdi/src/test/java/de/oopexpert/teststructure/`.
+`oopdi/src/test/java/de/oopexpert/teststructure/`. Aktueller Stand: u. a. `TestShutdownLifecycle`
+(Shutdown-State-Machine, Best-Effort-Aggregation, `shutdown()` vor Erstnutzung),
+`TestRequestDestruction` (REQUEST-Ende-Destruction), `TestSecurityValidation`
+(Eligibility-Garantie), `TestScopedInstances`/`TestInstancesState` (Cache-Thread-Safety),
+`TestClassesResolver` (atomarer Scan), `TestBackgroundWarmup` + `metadata/TestMetadataMode`/
+`TestMetadataWarmup` (Modi, `getWarmupStatus()`).
+
+Testwerte (Env-Variablen, System-Properties) injiziert das Surefire-Plugin aus `oopdi/pom.xml`
+(`environmentVariables`/`systemPropertyVariables`) — auf der Entwicklermaschine müssen sie nicht
+gesetzt sein. Ausnahme Eclipse: Dessen JUnit-Launcher liest Surefire-Konfiguration nicht; dort in
+der Run-Configuration manuell setzen — VM-Arguments `-DdbUsername=dbUser1 -Dcounter=4`,
+Env-Variable `dbUrl=jdbc://mysql:userdb`.
 
 ## 13. OOPDI als Dependency via GitHub Packages einbinden
 
@@ -698,7 +709,7 @@ In der `pom.xml` des konsumierenden Projekts das Repository eintragen:
     <dependency>
         <groupId>de.oopexpert.oopdi</groupId>
         <artifactId>oopdi-core</artifactId>
-        <version>0.1.0</version>
+        <version>0.1.0</version> <!-- Beispielstand; aktuelle Version siehe oopdi/CHANGELOG.md bzw. oopdi/pom.xml -->
     </dependency>
 </dependencies>
 ```
@@ -721,4 +732,11 @@ für die Server-`id` `github` hinterlegen:
 In GitHub-Actions-Workflows lässt sich das über `actions/setup-java`'s `server-id`/`server-username`/
 `server-password`-Inputs erledigen, ohne `settings.xml` manuell anzulegen (siehe
 `.github/workflows/release-version.yml` für ein Beispiel des Publish-Schritts).
+
+Releases laufen über einen einzigen manuell getriggerten Workflow (`workflow_dispatch`, keine
+Pull-Requests): Er scannt Conventional Commits seit dem letzten Tag (`fix:`=Patch,
+`feat:`=Minor, `!:`/`BREAKING CHANGE:`=Major), bumpt `oopdi/pom.xml` + `oopdi/CHANGELOG.md`,
+committet direkt auf `main`, baut, publisht nach GitHub Packages (`distributionManagement` in
+`oopdi/pom.xml`) und erstellt das GitHub Release. Details siehe
+[README.md](README.md#release-process).
 
