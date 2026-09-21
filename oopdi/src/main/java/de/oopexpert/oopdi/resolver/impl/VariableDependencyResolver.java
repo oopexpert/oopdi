@@ -38,7 +38,13 @@ public final class VariableDependencyResolver implements DependencyResolver {
 			if (!annotation.defaultValue().isEmpty()) {
 				valueByKey = annotation.defaultValue();
 			} else if (annotation.optional()) {
-				return point.getType().isPrimitive() ? null : null;
+				if (point.getType().isPrimitive()) {
+					throw new CannotInject("Cannot inject variable: key '" + key + "' not found in source "
+							+ source.name() + " for field in " + point.getDeclaringClass().getName()
+							+ " and field type '" + point.getType().getName() + "' is primitive, which cannot hold null. "
+							+ "Use defaultValue or a boxed type instead.");
+				}
+				return null;
 			} else {
 				throw new CannotInject("Cannot inject variable: key '" + key + "' not found in source "
 						+ source.name() + " for field in " + point.getDeclaringClass().getName());

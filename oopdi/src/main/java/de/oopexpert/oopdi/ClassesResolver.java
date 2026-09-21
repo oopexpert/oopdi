@@ -29,11 +29,13 @@ public class ClassesResolver {
 
 	@SuppressWarnings("unchecked")
 	public <T> Class<T> determineRelevantClass(Class<T> c) {
-		var cached = relevantClassCache.get(c);
-		if (cached != null) {
-			return (Class<T>) cached;
-		}
+		// Atomic fill: racing threads for the same uncached key must share one scan instead
+		// of each scanning the classpath. A mapping-function failure propagates without
+		// recording anything, so the next call transparently retries (same as before).
+		return (Class<T>) relevantClassCache.computeIfAbsent(c, key -> resolveRelevantClass((Class<T>) key));
+	}
 
+	private <T> Class<T> resolveRelevantClass(Class<T> c) {
 		var allClasses = scanner.findDerivedClasses(c, c.getPackageName());
 		allClasses.add(c);
 
@@ -47,9 +49,7 @@ public class ClassesResolver {
 			throw new MultipleClassesLeftAfterFiltering("Multiple concrete classes left after profile/non-abstract filtering class hierarchy of class '" + c.getName() + "'. Cannot decide object instantiation.");
 		}
 
-		var relevantClass = filteredClasses.getFirst();
-		relevantClassCache.put(c, relevantClass);
-		return relevantClass;
+		return filteredClasses.getFirst();
 	}
 
 	public Set<Class<?>> getSet(Class<?> hint) {

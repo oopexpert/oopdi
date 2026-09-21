@@ -5,8 +5,10 @@ import java.util.Map;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import de.oopexpert.oopdi.exception.CannotInject;
 import de.oopexpert.teststructure.ClassA;
 import de.oopexpert.teststructure.ClassMissingVar;
+import de.oopexpert.teststructure.ClassOptionalPrimitiveVar;
 import de.oopexpert.teststructure.ClassOptionalVar;
 import de.oopexpert.teststructure.ClassRoot;
 import de.oopexpert.teststructure.ClassVariableInvalidFormat;
@@ -78,6 +80,22 @@ class TestVariableInjection {
 
         Assertions.assertNull(instance.getOptionalValue(),
             "optional=true with missing key should inject null");
+
+    }
+
+    @Test
+    void testInjectVariableOptionalPrimitiveFailsDescriptively() {
+
+        OOPDI<ClassOptionalPrimitiveVar> oopdi = new OOPDI<>(ClassOptionalPrimitiveVar.class);
+
+        CannotInject ex = Assertions.assertThrows(CannotInject.class,
+            () -> oopdi.getInstance(ClassOptionalPrimitiveVar.class).getOptionalInt(),
+            "optional=true with missing key on a primitive field must fail explicitly");
+
+        Assertions.assertTrue(ex.getMessage().contains("definitelyNotSetKey_optionalPrimitive"),
+            "The error must name the missing key");
+        Assertions.assertTrue(ex.getMessage().contains("primitive"),
+            "The error must explain why a primitive field cannot be left unset");
 
     }
 
