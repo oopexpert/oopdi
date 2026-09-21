@@ -52,6 +52,8 @@ Full architecture, concurrency, and lifecycle details: see [.github/copilot-inst
 - `@Injectable` is required on every class the framework instantiates.
 - `@InjectSet` requires a `hint` (generic type erasure).
 - `@InjectVariable defaultValue=""` means "no default".
+- `@InjectVariable optional=true` with a missing key injects `null` — impossible for primitive fields, which fail fast with a descriptive `CannotInject` (use `defaultValue` or a boxed type instead).
+- `ClassesResolver.determineRelevantClass` fills its result cache atomically (`computeIfAbsent`): racing first-time resolutions of the same type share one classpath scan.
 - API boundary: the public contract is `OOPDI`, the annotations, `DependencyResolutionContext`, the exceptions, and the `MetadataMode`/`ShutdownStatus`/`WarmupStatus` enums. Casts to internal types (e.g. `InternalResolutionContext`) and reflective access to framework internals are unsupported territory — developers who bypass the public API this way keep their application consistent themselves. No JPMS enforcement is planned.
 
 ## Testing Instructions
