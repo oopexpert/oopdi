@@ -2,6 +2,7 @@ package de.oopexpert.oopdi;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,7 +11,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class InstancesState {
 
-	private final Map<Class<?>, Object> instances = new LinkedHashMap<>();
+	/**
+	 * Insertion-ordered instance cache. The per-class locks in {@code InstanceFactory} only
+	 * serialize creation of the <em>same</em> bean — threads creating <em>different</em> beans in
+	 * the same scope write to this map concurrently, so the map itself must be thread-safe.
+	 * Insertion order is preserved (needed for reverse-creation-order destruction).
+	 */
+	private final Map<Class<?>, Object> instances = Collections.synchronizedMap(new LinkedHashMap<>());
 	private final Set<Class<?>> constructorInjection = ConcurrentHashMap.newKeySet();
 	private final ConcurrentHashMap<Class<?>, Object> classLocks = new ConcurrentHashMap<>();
 
@@ -44,7 +51,9 @@ public class InstancesState {
 	}
 
 	public Collection<Object> allInstances() {
-		return instances.values();
+		synchronized (instances) {
+			return List.copyOf(instances.values());
+		}
 	}
 
 	/**
@@ -52,6 +61,8 @@ public class InstancesState {
 	 * are destroyed before the dependencies they were built on.
 	 */
 	public List<Object> allInstancesInReverseCreationOrder() {
-		return new ArrayList<>(instances.values()).reversed();
+		synchronized (instances) {
+			return new ArrayList<>(instances.values()).reversed();
+		}
 	}
 }

@@ -13,6 +13,8 @@ import de.oopexpert.teststructure.ClassParallelB;
 import de.oopexpert.teststructure.ClassParallelInitTracker;
 import de.oopexpert.teststructure.ClassRequestScenario;
 import de.oopexpert.teststructure.ClassRequestState;
+import de.oopexpert.teststructure.ClassA;
+import de.oopexpert.teststructure.ClassWithPreDestroy;
 
 class TestRequestAndConcurrency {
 
@@ -144,6 +146,49 @@ class TestRequestAndConcurrency {
             ClassParallelInitTracker.getMaxConcurrentInits() >= 2,
             "Per-class lock granularity should allow parallel initialization of unrelated beans"
         );
+
+    }
+
+    @Test
+    void testConcurrentCreationOfDifferentGlobalBeansStaysConsistent() throws InterruptedException {
+
+        // Different GLOBAL beans share one scope's instance cache but synchronize on different
+        // per-class locks; resolving them concurrently must neither corrupt the cache nor
+        // produce duplicate singletons, and shutdown afterwards must not fail.
+        OOPDI<ClassA> oopdi = new OOPDI<>(ClassA.class);
+
+        java.util.concurrent.atomic.AtomicReference<Throwable> workerFailure = new java.util.concurrent.atomic.AtomicReference<>();
+
+        Runnable resolveA = () -> {
+            try {
+                for (int i = 0; i < 50; i++) {
+                    oopdi.getInstance(ClassA.class);
+                }
+            } catch (Throwable t) {
+                workerFailure.compareAndSet(null, t);
+            }
+        };
+        Runnable resolveB = () -> {
+            try {
+                for (int i = 0; i < 50; i++) {
+                    oopdi.getInstance(ClassWithPreDestroy.class);
+                }
+            } catch (Throwable t) {
+                workerFailure.compareAndSet(null, t);
+            }
+        };
+
+        ConcurrentTestSupport.runTwoWorkers(resolveA, resolveB, 30, TimeUnit.SECONDS);
+
+        Assertions.assertNull(workerFailure.get(),
+            "Concurrent creation of different GLOBAL beans must not throw: " + workerFailure.get());
+        Assertions.assertSame(oopdi.getInstance(ClassA.class), oopdi.getInstance(ClassA.class),
+            "GLOBAL scope must still yield exactly one instance per bean after concurrent creation");
+        Assertions.assertSame(oopdi.getInstance(ClassWithPreDestroy.class), oopdi.getInstance(ClassWithPreDestroy.class),
+            "GLOBAL scope must still yield exactly one instance per bean after concurrent creation");
+
+        Assertions.assertDoesNotThrow(oopdi::shutdown,
+            "Shutdown must tolerate instances created concurrently");
 
     }
 

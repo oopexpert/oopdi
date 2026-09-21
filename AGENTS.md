@@ -31,7 +31,7 @@ Core classes: `OOPDI` (entry point, owns the single `MetadataRepository` instanc
 
 - Every managed bean is a Byte Buddy subclass proxy; managed classes must not be `final`.
 - Scope selection is polymorphic (`Scope` enum) — no switch statements.
-- Per-class locks allow parallel creation of different beans while serializing creation of the same bean.
+- Per-class locks allow parallel creation of different beans while serializing creation of the same bean. The shared per-scope instance cache itself (`InstancesState.instances`) is a synchronized insertion-ordered map: different beans in the same scope may be written concurrently under different per-class locks, and `allInstances()`/`allInstancesInReverseCreationOrder()` return defensive snapshots under the map lock (never live views), so concurrent creation and shutdown iteration cannot corrupt the cache or throw `ConcurrentModificationException`.
 - `immediate=true` is only valid for GLOBAL and THREAD scopes; it is invalid for LOCAL and REQUEST.
 - GLOBAL scope singleton behavior is container-local — different `OOPDI` instances never share GLOBAL beans.
 - GLOBAL/THREAD scoped proxies cache their resolved real object after the first method call (`ProxyManager.buildRealObjectSupplier`); LOCAL/REQUEST intentionally re-resolve on every call.

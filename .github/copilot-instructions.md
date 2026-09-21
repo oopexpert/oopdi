@@ -125,6 +125,8 @@ Key classes:
 - Threads racing for the **same** bean serialize correctly
 - Java's reentrant `synchronized` means dependency resolution on the same thread re-enters the lock without blocking (no deadlock)
 
+The shared per-scope instance cache (`InstancesState.instances`) is a `Collections.synchronizedMap`-wrapped `LinkedHashMap`: per-class locks only serialize same-bean creation, so different beans in the same scope are written concurrently under different locks. `allInstances()`/`allInstancesInReverseCreationOrder()` take defensive snapshots under the map lock (never live views), preserving insertion order for reverse-creation-order destruction while tolerating concurrent creation and shutdown iteration. Tests: `TestInstancesState.testConcurrentPutsForDistinctKeysStayConsistent`, `TestRequestAndConcurrency.testConcurrentCreationOfDifferentGlobalBeansStaysConsistent`.
+
 The `constructorInjection` set (cycle detection) lives inside `InstancesState` and is guarded by the same per-class lock.
 
 `ScopedInstances.threadInstanceMaps` uses `WeakHashMap` so entries are GC'd when threads die (previously a memory leak in thread-pool environments).
