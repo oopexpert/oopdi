@@ -557,6 +557,16 @@ assertEquals("boom", ex.getCause().getMessage());
 Methodenaufrufe, weshalb die ursprüngliche Exception als `cause` einer
 `InvocationTargetException` erscheint.
 
+Die generierte Proxy-*Klasse* wird pro Bean-Klasse nur einmal erzeugt und über alle Container
+geteilt; pro Proxy-*Instanz* stecken Request-Scope-Manager und Supplier in `oopdi$`-Feldern
+(`ProxiedBeanCarrier`/`ProxyTarget`, beide framework-intern). Zwei Container mit derselben Bean
+liefern also dieselbe Proxy-Klasse, aber strikt getrennte Realobjekte
+(`TestProxyBehavior.testProxyClassSharedAcrossContainers`,
+`testSharedProxyClassStillResolvesThroughOwningContainer`).
+
+Außerdem läuft die Eignungsprüfung (`@Injectable`, nicht abstrakt) **vor** jeder Konstruktor-
+Ausführung — Proxys für unzulässige Klassen entstehen gar nicht erst (siehe Kapitel 2).
+
 ### Self-Invocation umgeht den Proxy
 
 Ruft ein Bean intern `this.methode()` auf, greift **kein** Proxy — Standardverhalten bei
@@ -599,16 +609,39 @@ assertNotEquals(idThreadOne.get(), idThreadTwo.get());
 ```
 (`TestRequestAndConcurrency.testRequestScopeIsolatedAcrossThreads`)
 
+Ergänzend zur Lock-Granularität: Der geteilte Instanz-Cache pro Scope (`InstancesState`) ist selbst
+thread-sicher (synchronisierte, einfügungsgeordnete Map; Snapshots statt Live-Views — keine
+`ConcurrentModificationException` zwischen Erzeugung und Shutdown-Iteration). Erstanfragen
+desselben Typs teilen sich atomar einen einzigen Klassenpfad-Scan. THREAD-Zustände pro Thread
+(`WeakHashMap`, GC bei Thread-Tod) werden am Shutdown-Ende pauschal verworfen
+(`clearThreadStates` — kein Pool-Leak); der `directConstructionPhase`-Eintrag wird am äußersten
+Kettenende per `remove()` gelöscht statt auf `false` gesetzt.
+
 ## 11. Fehlerbilder & Ausnahmen
 
 | Situation | Ausnahme | Test |
 |-----------|----------|------|
-| Mehrere Konstruktoren in einer `@Injectable`-Klasse | `MultipleConstructors` | — |
-| `@InjectVariable` ohne Wert, ohne `optional`/`defaultValue` | `RuntimeException` mit Key im Text | `testInjectVariableMissingKeyThrowsDescriptiveError` |
-| Ungültiges Zahlenformat bei `@InjectVariable` | `RuntimeException` mit `NumberFormatException`-Cause | `testInjectVariableInvalidNumericFormatThrows` |
-| `immediate = true` bei `LOCAL`/`THREAD`/`REQUEST` (außer THREAD selbst erlaubt) | `RuntimeException` „Misconfiguration ...“ | `testImmediate*ScopeMisconfigurationThrows` |
+| Mehrere Konstruktoren in einer `@Injectable`-Klasse | `MultipleConstructors` | `testMultipleConstructorsClassConstructorNotInvokedBeforeValidation` |
+| Mehrere `@PostConstruct`-Methoden in einer Hierarchie | `MultiplePostConstructMethods` | — |
+| Mehrere `@PreDestroy`-Methoden in einer Hierarchie | `MultiplePreDestroyMethods` (aggregiert in `DestructionFailed`) | `testMultiplePreDestroyMethodsThrowDedicatedType` |
+| `@InjectVariable` ohne Wert, ohne `optional`/`defaultValue` | `CannotInject` mit Key im Text | `testInjectVariableMissingKeyThrowsDescriptiveError` |
+| `optional = true` + fehlender Key auf primitivem Feld | `CannotInject` (Key genannt, `defaultValue`/Boxed-Typ empfohlen) | `testInjectVariableOptionalPrimitiveFailsDescriptively` |
+| Ungültiges Zahlenformat bei `@InjectVariable` | `CannotInject` mit `NumberFormatException`-Cause | `testInjectVariableInvalidNumericFormatThrows` |
+| `immediate = true` bei `THREAD`/`LOCAL`/`REQUEST` (nur `GLOBAL` erlaubt) | `CannotInject` „Misconfiguration ...“ | `testImmediate*ScopeMisconfigurationThrows` |
+| Klasse ohne `@Injectable` (z. B. Scope-Abfrage) | `CannotInject` statt NPE | `testScopeOfNonInjectableClassFailsDescriptively` |
 | Profil-gefilterte Klasse ohne aktives Profil auflösen | `NoClassesLeftAfterFiltering` | `testProfileFilteredClassCannotBeInstantiatedWhenInactive` |
+| Mehrere konkrete Klassen nach Profilfilterung | `MultipleClassesLeftAfterFiltering` | — |
+| Klassenpfad nicht lesbar (Infrastruktur, kein Filterergebnis) | `ClasspathScanFailed` | — (simuliert in `TestMetadataWarmup`) |
+| Anfrage nach Shutdown-Beginn | `ContainerShutdown` | `testGetInstanceAfterShutdownFailsFast`, `testShutdownBeforeFirstUseIsNotSilentlyLost` |
+| Fehlgeschlagene `@PreDestroy` (Shutdown oder Kettenende) | `DestructionFailed` mit suppressed Einzelursachen | `testFailingPreDestroyDoesNotAbortShutdownOfRemainingInstances`, `testFailingRequestPreDestroyIsAggregatedButDestroysTheRest` |
+| Warmup-Scan-Fehlschlag bei `WARMUP_FAIL_FAST` | `WarmupFailed` | `testWarmupFailFastModePropagatesJobLevelFailureOnNextGetInstance` |
+| Unbekannter `oopdi.metadata.mode`-Wert | `IllegalArgumentException` | `testInvalidValueThrows` |
 | Exception in proxied Methode | `InvocationTargetException` mit Original als `cause` | `testProxyMethodExceptionPreservesCause` |
+
+Grundsatz: Eignungs-/Konfigurationsfehler werfen `CannotInject` (nie blanke `RuntimeException`
+oder NPE), Zerstörungsfehler aggregieren best-effort. Alle Meldungen entstehen per
+`String.formatted()`, auf Englisch — kein `--enable-preview` nötig (stabile Standard-API, keine
+JEP-430/431-Templates).
 
 ## 12. Testen mit OOPDI
 
