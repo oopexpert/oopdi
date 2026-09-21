@@ -38,6 +38,17 @@ public class InstancesState {
 		return (X) this.instances.get(c);
 	}
 
+	/**
+	 * Removes a cached instance, used as compensation when post-creation processing (field
+	 * injection, {@code @PostConstruct}) of a freshly constructed bean fails: the bean must not
+	 * stay behind half-initialized. Runs under the map lock, like the snapshot methods.
+	 */
+	public void remove(Class<?> c) {
+		synchronized (instances) {
+			this.instances.remove(c);
+		}
+	}
+
 	public boolean isUnderConstruction(Class<?> c) {
 		return constructorInjection.contains(c);
 	}

@@ -46,10 +46,13 @@ public class MetadataWarmup {
 	}
 
 	/**
-	 * Starts the background scan on a daemon thread. Must only be called once per instance.
+	 * Starts the background scan on a daemon thread. May only be called once per instance; a
+	 * second call fails fast instead of launching a duplicate scan.
 	 */
 	public void start() {
-		status.set(WarmupStatus.RUNNING);
+		if (!status.compareAndSet(WarmupStatus.NOT_STARTED, WarmupStatus.RUNNING)) {
+			throw new IllegalStateException("MetadataWarmup has already been started (status: " + status.get() + ").");
+		}
 		Thread thread = new Thread(this::run, "oopdi-metadata-warmup");
 		thread.setDaemon(true);
 		thread.start();

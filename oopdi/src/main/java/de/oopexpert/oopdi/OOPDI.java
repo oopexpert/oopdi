@@ -69,6 +69,15 @@ public class OOPDI<T> implements AutoCloseable {
 		return metadataWarmup != null ? metadataWarmup.getStatus() : WarmupStatus.NOT_STARTED;
 	}
 
+	/**
+	 * Status of the container shutdown, mirroring {@link #getWarmupStatus()}. Always
+	 * {@link ShutdownStatus#ACTIVE} until {@link #shutdown()} is called; afterwards one of the
+	 * terminal states (or {@link ShutdownStatus#SHUTTING_DOWN} while it is in progress).
+	 */
+	public ShutdownStatus getShutdownStatus() {
+		return this.context != null ? this.context.getShutdownStatus() : ShutdownStatus.ACTIVE;
+	}
+
 	public <X> X getInstance(Class<X> clazz) {
 		return getContext().getOrCreateProxy(clazz);
 	}

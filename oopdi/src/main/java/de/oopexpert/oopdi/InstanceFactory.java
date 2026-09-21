@@ -57,7 +57,17 @@ public class InstanceFactory {
 					instance = createInstance(c, scopedMap, directConstructionPhase);
 					scopedMap.put(c, instance);
 					log.debug("Created instance of {}", c.getName());
-					postProcessor.accept(instance);
+					try {
+						postProcessor.accept(instance);
+					} catch (RuntimeException e) {
+						// The bean is fully constructed but post-processing (field injection,
+						// @PostConstruct) failed: remove it again so no half-initialized
+						// instance stays behind in the cache. Field-injection cycles keep
+						// working because the early put above is unchanged for the success
+						// path; only the failure path compensates.
+						scopedMap.remove(c);
+						throw e;
+					}
 				} else {
 					@SuppressWarnings("unchecked")
 					X existing = (X) scopedMap.get(c);

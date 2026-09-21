@@ -76,6 +76,9 @@ class TestLifecycleHooks {
         // Resolving the dependent forces its dependency to be created first.
         oopdi.getInstance(ClassPreDestroyOrderDependent.class).ping();
         ClassPreDestroyOrderLog log = oopdi.getInstance(ClassPreDestroyOrderLog.class);
+        // Resolve the log bean itself before shutdown: after shutdown no new beans may be
+        // created anymore (ContainerShutdown), only already-resolved ones stay readable.
+        Assertions.assertTrue(log.getOrder().isEmpty());
 
         oopdi.shutdown();
 

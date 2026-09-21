@@ -4,8 +4,6 @@ public interface DependencyResolutionContext {
 
     <A> A getOrCreate(Class<A> clazz);
 
-    <A> A getOrCreateProxy(Class<A> clazz);
-
     boolean isDirectConstructionPhase();
     
 }

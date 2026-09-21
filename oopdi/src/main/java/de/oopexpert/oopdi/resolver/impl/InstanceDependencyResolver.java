@@ -4,6 +4,7 @@ import de.oopexpert.oopdi.annotation.InjectInstance;
 import de.oopexpert.oopdi.resolver.DependencyResolutionContext;
 import de.oopexpert.oopdi.resolver.DependencyResolver;
 import de.oopexpert.oopdi.resolver.InjectionPoint;
+import de.oopexpert.oopdi.resolver.InternalResolutionContext;
 
 public final class InstanceDependencyResolver implements DependencyResolver {
 
@@ -20,6 +21,8 @@ public final class InstanceDependencyResolver implements DependencyResolver {
 		if (context.isDirectConstructionPhase()) {
 			return context.getOrCreate(targetType);
 		}
-		return context.getOrCreateProxy(targetType);
+		// Proxy issuance is a framework-internal capability: Context is the single
+		// implementation of InternalResolutionContext, so this cast always succeeds.
+		return ((InternalResolutionContext) context).getOrCreateProxy(targetType);
 	}
 }

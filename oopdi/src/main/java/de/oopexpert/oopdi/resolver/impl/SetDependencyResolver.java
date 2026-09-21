@@ -9,6 +9,7 @@ import de.oopexpert.oopdi.annotation.InjectSet;
 import de.oopexpert.oopdi.resolver.DependencyResolutionContext;
 import de.oopexpert.oopdi.resolver.DependencyResolver;
 import de.oopexpert.oopdi.resolver.InjectionPoint;
+import de.oopexpert.oopdi.resolver.InternalResolutionContext;
 
 public final class SetDependencyResolver implements DependencyResolver {
 
@@ -30,7 +31,9 @@ public final class SetDependencyResolver implements DependencyResolver {
 		Set<Class<?>> targetClasses = classesResolver.getSet(hintClass);
 
 		return targetClasses.stream()
-				.map(context::getOrCreateProxy)
+				// Proxy issuance is a framework-internal capability: Context is the single
+				// implementation of InternalResolutionContext, so this cast always succeeds.
+				.map(((InternalResolutionContext) context)::getOrCreateProxy)
 				.collect(Collectors.toUnmodifiableSet());
 	}
 }
