@@ -41,6 +41,7 @@
    - Circular Dependencies
    - Profiles
    - Handling Errors and Exceptions
+   - Background Metadata Warmup
 
 ## Introduction
 
@@ -158,6 +159,8 @@ public class ApplicationConfig { ... }
 ### Thread Scope (`Scope.THREAD`)
 
 One instance is created per thread per `OOPDI` container. Each thread gets its own instance, isolated from all other threads.
+
+`immediate = true` is not compatible with `THREAD` scope (there is no single instance to create eagerly at startup) and will be rejected at startup.
 
 ```java
 @Injectable(scope = Scope.THREAD)
@@ -349,10 +352,31 @@ public class InMemoryDataSource extends DataSource { ... }
 | `MultipleClassesLeftAfterFiltering` | More than one concrete `@Injectable` subclass matched after profile filtering. |
 | `MultipleConstructors` | A managed class declares more than one constructor. |
 | `MultiplePostConstructMethods` | A class declares more than one `@PostConstruct` method. |
-| `CannotInject` | A field or constructor dependency could not be injected — typically wraps `NoClassesLeftAfterFiltering`, `MultipleClassesLeftAfterFiltering`, or a constructor cycle. |
+| `MultiplePreDestroyMethods` | A class hierarchy declares more than one `@PreDestroy` method. |
+| `CannotInject` | A field, constructor, or variable dependency could not be injected — typically wraps `NoClassesLeftAfterFiltering`, `MultipleClassesLeftAfterFiltering`, a constructor cycle, a missing/invalid `@InjectVariable` value, or an eligibility/scope misconfiguration (abstract class, non-`@Injectable` class, `immediate=true` on a non-GLOBAL scope). |
 | `NoRequestScopeAvailable` | A REQUEST-scoped bean's method was called outside any proxy call chain (i.e. directly on the real object). |
 | `UnderConstruction` | Internal sentinel for constructor cycle detection; surfaced as `CannotInject`. |
-| `RuntimeException` (variable injection) | A required environment variable or system property key was not found. |
+| `ContainerShutdown` | A bean was requested after the container's shutdown began. |
+| `DestructionFailed` | One or more `@PreDestroy` methods failed during `shutdown()` or at REQUEST-chain end; destruction still completed best-effort and the individual failures are attached as suppressed exceptions. |
+| `ClasspathScanFailed` | The classpath itself could not be scanned (unreadable entries, I/O failure) — an infrastructure problem, distinct from `NoClassesLeftAfterFiltering`/`MultipleClassesLeftAfterFiltering`, which report a completed scan with no/ambiguous results. |
+| `WarmupFailed` | The background metadata warmup's classpath scan failed and `MetadataMode.WARMUP_FAIL_FAST` is active (see [Background Metadata Warmup](#background-metadata-warmup)). |
+
+### Background Metadata Warmup
+
+By default (`MetadataMode.DISABLED`), every bean's reflective metadata (primary constructor, field injection points, `@PostConstruct`/`@PreDestroy` methods) is inspected fresh on each access. This can be tuned via the `oopdi.metadata.mode` system property:
+
+| Mode | Behavior |
+|------|----------|
+| `DISABLED` (default) | No caching; every access re-inspects the class via reflection. |
+| `METADATA_ONLY` | Metadata is cached, populated lazily on first access. |
+| `WARMUP_FAIL_FAST` | Cached, and a background daemon thread eagerly scans the entire classpath for `@Injectable` classes at container startup to pre-populate the cache. If that classpath scan itself fails, the next `getInstance()`/`getContext()` call throws `WarmupFailed`. |
+| `WARMUP_LENIENT` | Same background warmup as `WARMUP_FAIL_FAST`, but a failed scan is only logged; the container keeps working via the normal on-demand fallback (useful when a warmup failure must not prevent, say, a web server from starting). |
+
+```powershell
+-Doopdi.metadata.mode=WARMUP_FAIL_FAST
+```
+
+A single class that fails metadata inspection during warmup (e.g. it violates the "exactly one constructor" rule) is logged and skipped — only a failure of the classpath scan itself is job-fatal. Call `oopdi.getWarmupStatus()` to observe the background job (`NOT_STARTED`, `RUNNING`, `READY`, `FAILED`; always `NOT_STARTED` when warmup isn't active).
 
 ## Release Process
 
