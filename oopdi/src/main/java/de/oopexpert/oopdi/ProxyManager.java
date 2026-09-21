@@ -20,8 +20,8 @@ public class ProxyManager {
 	private final ByteBuddyProxyFactory proxyFactory;
 	private final ScopedSupplierFactory supplierFactory;
 
-	public ProxyManager(MetadataRepository metadataRepository) {
-		this(new RequestScopeManager(), new ScopedSupplierFactory(), metadataRepository);
+	public ProxyManager(RequestScopeManager requestScopeManager, MetadataRepository metadataRepository) {
+		this(requestScopeManager, new ScopedSupplierFactory(), metadataRepository);
 	}
 
 	public ProxyManager(RequestScopeManager requestScopeManager, ScopedSupplierFactory supplierFactory,
@@ -62,10 +62,6 @@ public class ProxyManager {
 	public <A> Class<A> nonProxyClazz(Class<A> clazz) {
 		Class<A> nonProxyClass = (Class<A>) proxyClasses.get(clazz);
 		return nonProxyClass != null ? nonProxyClass : clazz;
-	}
-
-	public static InstancesState getRequestScopedInstances() {
-		return RequestScopeManager.getRequestScopedInstances();
 	}
 
 	public static boolean isImmediateInstantiationRequested(Class<?> c) {

@@ -7,6 +7,7 @@ import de.oopexpert.oopdi.metadata.MetadataMode;
 import de.oopexpert.oopdi.metadata.MetadataRepository;
 import de.oopexpert.oopdi.metadata.MetadataWarmup;
 import de.oopexpert.oopdi.metadata.WarmupStatus;
+import de.oopexpert.oopdi.proxy.RequestScopeManager;
 
 public class OOPDI<T> implements AutoCloseable {
 
@@ -31,10 +32,14 @@ public class OOPDI<T> implements AutoCloseable {
 	 */
 	OOPDI(Class<T> rootClazz, ClasspathScanner warmupScanner, String... profiles) {
 		this.rootClazz = Objects.requireNonNull(rootClazz, "rootClazz must not be null");
-		this.scopedInstances = new ScopedInstances();
+		// One RequestScopeManager per container, shared by the interception path (ProxyManager)
+		// and the instance-selection path (ScopedInstances): REQUEST-scoped state must never
+		// leak across container boundaries on the same thread.
+		RequestScopeManager requestScopeManager = new RequestScopeManager();
+		this.scopedInstances = new ScopedInstances(requestScopeManager);
 		this.metadataMode = MetadataMode.fromSystemProperty();
 		this.metadataRepository = new MetadataRepository(metadataMode);
-		this.proxyManager = new ProxyManager(metadataRepository);
+		this.proxyManager = new ProxyManager(requestScopeManager, metadataRepository);
 		this.classesResolver = new ClassesResolver(profiles);
 
 		if (metadataMode.isWarmupEnabled()) {

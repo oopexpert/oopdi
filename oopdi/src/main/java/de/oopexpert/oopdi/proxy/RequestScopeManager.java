@@ -8,15 +8,21 @@ import de.oopexpert.oopdi.exception.NoRequestScopeAvailable;
 
 public class RequestScopeManager {
 
-	private static final ThreadLocal<RequestContext> REQUEST_CONTEXT = new ThreadLocal<>();
+	/**
+	 * Request state is intentionally instance-scoped, not static: each {@code OOPDI} container
+	 * owns one {@code RequestScopeManager} (wired through {@code ProxyManager} for call
+	 * interception and through {@code ScopedInstances} for instance selection), so REQUEST-scoped
+	 * beans and call-depth counters never leak across container boundaries on the same thread.
+	 */
+	private final ThreadLocal<RequestContext> requestContext = new ThreadLocal<>();
 
 	private static final class RequestContext {
 		final InstancesState state = new InstancesState();
 		int callDepth = 0;
 	}
 
-	public static InstancesState getRequestScopedInstances() {
-		RequestContext context = REQUEST_CONTEXT.get();
+	public InstancesState getRequestScopedInstances() {
+		RequestContext context = requestContext.get();
 		if (context == null) {
 			throw new NoRequestScopeAvailable();
 		}
@@ -24,11 +30,11 @@ public class RequestScopeManager {
 	}
 
 	public <T> Object intercept(Method method, Object[] args, Supplier<T> realObjectSupplier) throws Throwable {
-		RequestContext context = REQUEST_CONTEXT.get();
+		RequestContext context = requestContext.get();
 
 		if (context == null) {
 			context = new RequestContext();
-			REQUEST_CONTEXT.set(context);
+			requestContext.set(context);
 		}
 
 		context.callDepth++;
@@ -38,7 +44,7 @@ public class RequestScopeManager {
 		} finally {
 			context.callDepth--;
 			if (context.callDepth == 0) {
-				REQUEST_CONTEXT.remove();
+				requestContext.remove();
 			}
 		}
 	}

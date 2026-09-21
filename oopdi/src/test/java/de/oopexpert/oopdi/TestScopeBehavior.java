@@ -99,6 +99,33 @@ class TestScopeBehavior {
     }
 
     @Test
+    void testRequestScopeIsolatedAcrossDifferentContainers() {
+
+        OOPDI<ClassD> oopdiOne = new OOPDI<>(ClassD.class);
+        OOPDI<ClassD> oopdiTwo = new OOPDI<>(ClassD.class);
+
+        ClassD one = oopdiOne.getInstance(ClassD.class);
+        ClassD two = oopdiTwo.getInstance(ClassD.class);
+
+        java.util.concurrent.atomic.AtomicInteger readInTwo = new java.util.concurrent.atomic.AtomicInteger(-1);
+        java.util.concurrent.atomic.AtomicInteger readInOneAfterNested = new java.util.concurrent.atomic.AtomicInteger(-1);
+
+        one.execute(dOne -> {
+            dOne.setI(1);
+            two.execute(dTwo -> {
+                dTwo.setI(2);
+                readInTwo.set(dTwo.getI());
+            });
+            readInOneAfterNested.set(dOne.getI());
+        });
+
+        Assertions.assertEquals(2, readInTwo.get());
+        Assertions.assertEquals(1, readInOneAfterNested.get(),
+            "A nested REQUEST chain of a second container must not see or overwrite the first container's REQUEST state");
+
+    }
+
+    @Test
     void testGlobalScopeRealObjectResolvedOnceAcrossManyProxyCalls() {
 
         ClassGlobalRace.instanceCount.set(0);

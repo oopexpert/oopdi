@@ -1,12 +1,13 @@
 package de.oopexpert.oopdi;
 
 import de.oopexpert.oopdi.annotation.Injectable;
+import de.oopexpert.oopdi.proxy.RequestScopeManager;
 
 public enum Scope {
 
 	GLOBAL {
 		@Override
-		InstancesState select(InstancesState globalInstances, InstancesState threadInstances) {
+		InstancesState select(InstancesState globalInstances, InstancesState threadInstances, RequestScopeManager requestScopeManager) {
 			return globalInstances;
 		}
 
@@ -17,7 +18,7 @@ public enum Scope {
 	},
 	THREAD {
 		@Override
-		InstancesState select(InstancesState globalInstances, InstancesState threadInstances) {
+		InstancesState select(InstancesState globalInstances, InstancesState threadInstances, RequestScopeManager requestScopeManager) {
 			return threadInstances;
 		}
 		@Override
@@ -27,7 +28,7 @@ public enum Scope {
 	},
 	LOCAL {
 		@Override
-		InstancesState select(InstancesState globalInstances, InstancesState threadInstances) {
+		InstancesState select(InstancesState globalInstances, InstancesState threadInstances, RequestScopeManager requestScopeManager) {
 			return new InstancesState();
 		}
 		@Override
@@ -37,8 +38,8 @@ public enum Scope {
 	},
 	REQUEST {
 		@Override
-		InstancesState select(InstancesState globalInstances, InstancesState threadInstances) {
-			return ProxyManager.getRequestScopedInstances();
+		InstancesState select(InstancesState globalInstances, InstancesState threadInstances, RequestScopeManager requestScopeManager) {
+			return requestScopeManager.getRequestScopedInstances();
 		}
 		@Override
 		boolean isImmediateInstantiationPossible() {
@@ -46,7 +47,7 @@ public enum Scope {
 		}
 	};
 
-	abstract InstancesState select(InstancesState globalInstances, InstancesState threadInstances);
+	abstract InstancesState select(InstancesState globalInstances, InstancesState threadInstances, RequestScopeManager requestScopeManager);
 	
 	abstract boolean isImmediateInstantiationPossible();
 	
