@@ -68,7 +68,7 @@ public class ProxyManager {
 	}
 
 	@SuppressWarnings("unchecked")
-	public <A> Class<A> nonProxyClazz(Class<A> clazz) {
+	private <A> Class<A> nonProxyClazz(Class<A> clazz) {
 		Class<A> nonProxyClass = (Class<A>) proxyClasses.get(clazz);
 		return nonProxyClass != null ? nonProxyClass : clazz;
 	}
