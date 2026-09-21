@@ -302,6 +302,19 @@ public class ClassPostConstructWithParameters {
 ```
 (`TestLifecycleHooks.testPostConstructReceivesBeanAndOopdiParameters`)
 
+Drei Details zum Auflösungsmechanismus: Reflektiver Feldzugriff (`setAccessible`) wird nur für
+Felder geöffnet, die tatsächlich eine Inject-Annotation tragen — nicht für jedes deklarierte Feld.
+Konstruktor-Parameter lösen direkt über `Context.getOrCreate` auf und umgehen dabei bewusst die
+Proxy-Schicht. Und die „direkte Konstruktionsphase" ist nesting-sicher (save/restore statt
+set/reset): Die Feld-Injection einer verschachtelten Bean sieht noch die Phase der äußeren Kette
+und löst deshalb reale Objekte statt Proxys auf
+(`TestResolverAndSet.testNestedFieldInjectionResolvesRealObjectNotProxy`, Fixtures
+`ClassNestedOuter`/`ClassNestedDepA`/`ClassNestedDepB`).
+
+Proxy-Vergabe (`getOrCreateProxy`) ist framework-intern (`InternalResolutionContext`) — Anwender
+programmieren gegen `DependencyResolutionContext` mit `getOrCreate` allein; Proxys erhält man
+ausschließlich über `OOPDI.getInstance`.
+
 ## 6. Mengen-Injection: `@InjectSet` und Profile
 
 `@InjectSet` injiziert alle aktiven konkreten Implementierungen/Subklassen einer Basisklasse.
@@ -357,6 +370,13 @@ assertThrows(NoClassesLeftAfterFiltering.class,
 **Hinweis:** Interface-zu-Implementierung-Bindung (à la Spring) wird bewusst **nicht** unterstützt —
 nur der Classpath-Scan über `@Injectable`-Subklassen entscheidet, was aktiv ist.
 
+Gleichzeitige Erstanfragen desselben Typs teilen sich atomar einen einzigen Scan
+(`computeIfAbsent` im Ergebnis-Cache statt Check-then-act;
+`TestClassesResolver.testConcurrentDetermineRelevantClassScansOnce`). Scan-Kandidaten werden
+grundsätzlich ohne Initialisierung geladen — herausgefilterte Klassen führen nie statische
+Initialisierer aus. Kann der Klassenpfad selbst nicht gelesen werden (Infrastrukturproblem, kein
+Filterergebnis), wirft der Scan `ClasspathScanFailed` statt der Filter-Exceptions.
+
 ## 7. Variablen-Injection: `@InjectVariable`
 
 ```java
@@ -390,7 +410,9 @@ private String missingValue;
 RuntimeException ex = assertThrows(RuntimeException.class, instance::getMissingValue);
 assertTrue(ex.getMessage().contains("definitelyNotSetKey_12345")); // Key steht in der Meldung
 ```
-(`TestVariableInjection.testInjectVariableMissingKeyThrowsDescriptiveError`)
+(`TestVariableInjection.testInjectVariableMissingKeyThrowsDescriptiveError`) — fehlende Keys,
+ungültige Formate und Konfigurationsfehler werfen grundsätzlich `CannotInject` (eine
+`RuntimeException`-Spezialisierung), nie blanke `RuntimeException`.
 
 ### `optional = true` → `null` statt Exception
 
@@ -399,6 +421,12 @@ assertTrue(ex.getMessage().contains("definitelyNotSetKey_12345")); // Key steht 
 private String optionalValue;
 ```
 → `instance.getOptionalValue()` liefert `null`.
+
+**Achtung Primitiv-Felder:** `optional = true` ohne Key injiziert `null` — unmöglich für primitive
+Felder. Dort schlägt die Auflösung sofort mit deskriptivem `CannotInject` fehl (Key wird genannt,
+`defaultValue` oder Boxed-Typ empfohlen), statt später kryptisch in `Field.set` zu scheitern
+(`TestVariableInjection.testInjectVariableOptionalPrimitiveFailsDescriptively`, Fixture
+`ClassOptionalPrimitiveVar`).
 
 ### `defaultValue` — auch für primitive Felder geparst
 
@@ -478,6 +506,7 @@ public class ClassPreDestroyOrderDependent {
 ```java
 oopdi.getInstance(ClassPreDestroyOrderDependent.class).ping(); // erzeugt dependent + dependency
 ClassPreDestroyOrderLog log = oopdi.getInstance(ClassPreDestroyOrderLog.class);
+log.getOrder(); // Log-Bean VOR shutdown auflösen (danach keine Neuerzeugung mehr möglich!)
 
 oopdi.shutdown();
 
@@ -485,7 +514,29 @@ assertEquals(List.of("dependent", "dependency"), log.getOrder());
 ```
 (`TestLifecycleHooks.testPreDestroyIsInvokedInReverseCreationOrder`)
 
-`@PreDestroy`-Methoden dürfen **keine Parameter** haben.
+`@PreDestroy`-Methoden dürfen **keine Parameter** haben. Mehr als eine `@PreDestroy`-Methode in
+einer Hierarchie wirft `MultiplePreDestroyMethods` (Spiegel zu `MultiplePostConstructMethods`;
+`TestLifecycleHooks.testMultiplePreDestroyMethodsThrowDedicatedType`).
+
+### Shutdown ist zustandsgesteuert, nicht ein Aufruf
+
+`ShutdownStatus`: `ACTIVE` → `SHUTTING_DOWN` → `SHUTDOWN`/`FAILED` (Single-Winner-CAS, idempotent,
+beobachtbar via `oopdi.getShutdownStatus()`). Ein einziger Guard am Eingang von
+`Context.getOrCreate` — dem einzigen Trichter aller Realobjekt-Erzeugung — wirft `ContainerShutdown`
+für alles, was nach Shutdown-Beginn angefragt wird (Top-Level wie verschachtelt). Bereits aufgelöste
+Beans bleiben lesbar; ein `shutdown()` vor der Erstnutzung wird gemerkt und lässt spätere
+`getInstance()`-Aufrufe fail-fast scheitern statt Beans aus einem toten Container zu liefern.
+
+Zerstört wird Best-Effort in Drain-Loop-Durchgängen, bis keine unzerstörten Instanzen mehr übrig
+sind (laufende Ketten lassen sich nicht abbrechen und werden von späteren Durchgängen
+aufgesammelt): Ein fehlgeschlagenes `@PreDestroy` bricht den Shutdown **nicht** ab — alle Fehler
+werden als suppressed Exceptions an einem `DestructionFailed` aggregiert. Schlägt Feld-Injection
+oder `@PostConstruct` fehl, wird die halb-initialisierte Bean per Kompensation wieder aus dem Cache
+entfernt (`TestShutdownLifecycle`).
+
+REQUEST-Beans warten nicht auf `shutdown()`: Sie sterben am Kettenende (gleiche Best-Effort- und
+Aggregations-Semantik; Hauptaufruf-Fehler propagiert mit Cleanup-Fehlern als suppressed). Nur
+`LOCAL`-Beans haben kein Lebenszyklus-Ende (Aufruf-transient, nie gecacht).
 
 ## 9. Proxy-Verhalten
 
