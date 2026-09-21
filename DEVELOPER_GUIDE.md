@@ -26,17 +26,27 @@ und garantiert das aktuelle Verhalten widerspiegeln.
 ## 1. Grundkonzept
 
 Jedes verwaltete Bean wird beim Erstellen in einen **Byte-Buddy-Subclass-Proxy** verpackt. Aufrufer
-halten immer eine Referenz auf den Proxy, nie auf das reale Objekt. Der Proxy löst bei jedem
-Methodenaufruf anhand des konfigurierten `Scope` die passende reale Instanz auf und delegiert an sie.
+halten immer eine Referenz auf den Proxy, nie auf das reale Objekt. Der Proxy löst anhand des
+konfigurierten `Scope` die passende reale Instanz auf und delegiert an sie — `GLOBAL` und `THREAD`
+cachen dabei das einmal aufgelöste reale Objekt (keine erneute Auflösung pro Aufruf), `LOCAL` und
+`REQUEST` lösen bewusst bei jedem Aufruf bzw. jeder Kette neu auf. Die generierte Proxy-*Klasse*
+wird pro Bean-Klasse nur einmal erzeugt und über alle Container geteilt; der container-spezifische
+Zustand (Request-Scope-Manager, Supplier des realen Objekts) steckt pro Proxy-*Instanz* in
+`oopdi$`-Feldern. Generierte Klassen bleiben für die JVM-Lebensdauer im Speicher (dokumentierte
+Grenze für Hot-Redeploy-Umgebungen).
 
 ```java
 OOPDI<ClassRoot> oopdi = new OOPDI<>(ClassRoot.class);
 ClassRoot root = oopdi.getInstance(ClassRoot.class); // root ist ein Proxy, kein "nacktes" ClassRoot
 ```
 
-Wichtige Klassen: `OOPDI` (Einstiegspunkt), `Context` (erzeugt/injiziert/verwaltet Beans),
-`ProxyManager` (Byte-Buddy-Proxys, REQUEST-`ThreadLocal`), `ScopedInstances`/`InstancesState`
-(Instanz-Cache pro Scope), `ClassesResolver` (Klassenpfad-Scan, Profilfilterung).
+Wichtige Klassen: `OOPDI` (Einstiegspunkt, besitzt die einzige `MetadataRepository`-Instanz),
+`Context` (erzeugt/injiziert/verwaltet Beans, besitzt die `ShutdownStatus`-State-Machine),
+`ProxyManager` (Byte-Buddy-Proxys; ein `RequestScopeManager` pro Container),
+`metadata.MetadataRepository`/`ClassMetadata` (einzige Quelle für Konstruktor, Feld-Injektionspunkte,
+Lifecycle-Methoden; Verhalten gesteuert per `MetadataMode`),
+`ScopedInstances`/`InstancesState` (Instanz-Cache pro Scope),
+`ClassesResolver` (Klassenpfad-Scan, Profilfilterung).
 
 ## 2. Ein Bean registrieren: `@Injectable`
 
@@ -66,6 +76,15 @@ Konstruktor-Regeln: **genau ein Konstruktor** pro Klasse (Constructor-Injection 
 sonst wirft die Registrierung `MultipleConstructors`. Verwaltete Klassen dürfen **nicht `final`** sein,
 da Byte Buddy eine Subklasse erzeugen muss.
 
+Zwei Garantien vorab: Die Eignungsprüfung (`@Injectable` vorhanden, nicht abstrakt) läuft
+**vor** jeder Proxy- oder Real-Konstruktor-Ausführung — eine unzulässige Klasse triggert nie
+Konstruktor-Nebeneffekte (`TestSecurityValidation`, Fixtures
+`ClassNotInjectableWithSideEffect`/`ClassAbstractInjectableWithSideEffect`). Und der
+Klassenpfad-Scan lädt Kandidaten, ohne sie zu initialisieren (`Class.forName(name, false, loader)`):
+Klassen, die danach herausgefiltert werden (Profil-Mismatch, abstrakt), führen nie ihre statischen
+Initialisierer aus
+(`TestSecurityValidation.testInjectSetClasspathScanDoesNotInitializeProfileFilteredCandidate`).
+
 ## 3. Bean auflösen: `OOPDI.getInstance`
 
 ```java
@@ -80,8 +99,9 @@ Varargs verwendet:
 OOPDI<ClassRoot> oopdi = new OOPDI<>(ClassRoot.class, "profile1");
 ```
 
-`OOPDI`-Container sind vollständig voneinander isoliert – auch `GLOBAL`-Singletons werden nie
-zwischen zwei Containern geteilt:
+`OOPDI`-Container sind vollständig voneinander isoliert — das gilt für **alle** Scopes, nicht
+nur für `GLOBAL`-Singletons (REQUEST-State ist pro Container, THREAD-Maps ebenso; `LOCAL` ist
+ohnehin Aufruf-transient):
 
 ```java
 OOPDI<ClassRoot> oopdiOne = new OOPDI<>(ClassRoot.class);
@@ -95,7 +115,13 @@ one.setI(123);
 assertEquals(123, one.getI());     // eigener State
 assertNotEquals(123, two.getI());  // kein geteilter GLOBAL-State
 ```
-(`TestScopeBehavior.testGlobalScopeIsolatedAcrossDifferentContainers`)
+(`TestScopeBehavior.testGlobalScopeIsolatedAcrossDifferentContainers`; für REQUEST:
+`testRequestScopeIsolatedAcrossDifferentContainers` mit verschachtelten Ketten zweier Container
+auf einem Thread)
+
+Der Container ist `AutoCloseable` (`close()` ruft `shutdown()`); `getWarmupStatus()` und
+`getShutdownStatus()` machen Hintergrund-Warmup bzw. Shutdown-Zustand beobachtbar (siehe
+[Lifecycle](#8-lifecycle-postconstruct--predestroy)).
 
 ## 4. Scopes
 
@@ -206,12 +232,20 @@ Wichtig: Wirft der äußere Aufruf eine Exception, wird der REQUEST-Scope trotzd
 bereinigt, sodass der nächste Top-Level-Aufruf wieder eine frische Instanz bekommt
 (`TestRequestAndConcurrency.testRequestScopeExceptionCleansContextForNextCall`). REQUEST-Scopes
 sind außerdem strikt pro Thread isoliert
-(`TestRequestAndConcurrency.testRequestScopeIsolatedAcrossThreads`).
+(`TestRequestAndConcurrency.testRequestScopeIsolatedAcrossThreads`) **und** pro Container
+(`TestScopeBehavior.testRequestScopeIsolatedAcrossDifferentContainers`).
+
+Am Kettenende werden alle REQUEST-Beans der Kette in umgekehrter Erzeugungsreihenfolge zerstört
+(`@PreDestroy` läuft hier, nicht erst bei `shutdown()`); nur `LOCAL`-Beans haben kein
+Lebenszyklus-Ende (Aufruf-transient, nie gecacht). Details siehe
+[Lifecycle](#8-lifecycle-postconstruct--predestroy).
 
 ### `immediate = true`
 
-Nur für `GLOBAL` und `THREAD` sinnvoll (deterministisch initialisierbar). Für `LOCAL` und
-`REQUEST` ist es eine Fehlkonfiguration, die erst beim ersten Proxy-Aufruf sichtbar wird:
+Nur für `GLOBAL` sinnvoll (einzige Scope mit genau einer Instanz, die man vorab erzeugen kann).
+Für `THREAD`, `LOCAL` und `REQUEST` ist es eine Fehlkonfiguration, die mit `CannotInject`
+fehlschlägt, sobald die Bean erstmals wirklich erzeugt würde — also erst beim ersten
+Proxy-Aufruf sichtbar wird:
 
 ```java
 @Injectable(scope = Scope.LOCAL, immediate = true) // ungültig!
@@ -222,7 +256,7 @@ public class ClassImmediateLocalMisconfig { /* ... */ }
 OOPDI<ClassImmediateLocalMisconfig> oopdi = new OOPDI<>(ClassImmediateLocalMisconfig.class);
 ClassImmediateLocalMisconfig instance = oopdi.getInstance(ClassImmediateLocalMisconfig.class);
 
-RuntimeException ex = assertThrows(RuntimeException.class, instance::ping);
+CannotInject ex = assertThrows(CannotInject.class, instance::ping);
 assertTrue(ex.getMessage().contains("Misconfiguration"));
 ```
 (`TestScopeBehavior.testImmediateLocalScopeMisconfigurationThrows`, analog für `THREAD`/`REQUEST`)
