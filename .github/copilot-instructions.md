@@ -46,7 +46,7 @@ Pre-commit checklist for architecture-relevant changes (proxy library, scopes, l
 Recent verified insights that must stay reflected in helper docs:
 - `immediate=true` is invalid for THREAD, LOCAL, and REQUEST scopes.
 - Misconfiguration for these scope/immediate combinations is observable as a runtime failure when the proxy-invoked method is executed.
-- GLOBAL scope singleton behavior is container-local; different `OOPDI` instances do not share GLOBAL bean instances.
+- GLOBAL scope singleton behavior is container-local; different `OOPDI` instances do not share GLOBAL bean instances. Since the REQUEST-scope fix, this holds for every scope: REQUEST state is per-container (`RequestScopeManager` instance, never static), THREAD via per-container maps, LOCAL trivially.
 - `ProxyManager.buildRealObjectSupplier` now lazily caches the resolved real object for GLOBAL (via a synchronized `AtomicReference`) and THREAD (via `ThreadLocal`) scopes, so a proxy method call after the first no longer re-runs `Context.getOrCreate`'s annotation checks and per-class lock acquisition. LOCAL and REQUEST scopes are intentionally excluded and still re-resolve on every call (LOCAL needs a fresh instance per call; REQUEST is thread/call-depth scoped).
 - Confirmed (fixed): building a Byte Buddy proxy (`ProxyManager.proxy()`/`createProxyWith*Constructor`) previously invoked the real class's constructor immediately with dummy/null arguments *before* `Context`'s `@Injectable`/abstract validation ran. Fixed via `ProxyManager.proxyIfNotExists(Class, Consumer<Class<T>> eligibilityCheck, Function)`: the eligibility check now runs synchronously before `proxy()`/any constructor invocation. `Context.validateEligible` (checkInjectableAnnotated + checkNonAbstract) is passed as this check from every `proxyIfNotExists` call site (root class, field injection, `@InjectSet`, `getOrCreateInstance`). `checkImmediateInstantiationConfiguration` intentionally remains lazy (config-consistency check, not an eligibility gate). Note: constructor-injected parameters resolve via `Context.getOrCreate` directly (bypassing the proxy layer entirely, pre-existing design), so `getOrCreate` still performs its own `checkInjectableAnnotated`/`checkNonAbstract` for that path. Tests: `TestSecurityValidation.testNonInjectableClassConstructorNotInvokedBeforeValidation`, `testAbstractClassConstructorNotInvokedBeforeValidation`.
 - Remaining known gap (fix planned, Phase C of session plan): `Context.processField` calls `field.setAccessible(true)` unconditionally before checking which inject annotation is present.
@@ -100,8 +100,8 @@ Key classes:
 - `metadata.MetadataRepository` / `metadata.ClassMetadata` — single source of truth for a class's primary constructor, field injection points, and lifecycle methods (see insight above); caching controlled by `metadata.MetadataMode` (`oopdi.metadata.mode` system property, default `DISABLED`)
 - `metadata.MetadataMode` — `DISABLED`/`METADATA_ONLY`/`WARMUP_FAIL_FAST`/`WARMUP_LENIENT`; `metadata.MetadataWarmup`/`WarmupStatus` — background classpath scan pre-populating the cache for `WARMUP_*` modes (see insight above)
 - `resolver` package (`DependencyResolverPipeline`, `InjectionPoint`/`FieldInjectionPoint`/`ParameterInjectionPoint`, `impl.{Variable,Set,Instance}DependencyResolver`) — pluggable field/parameter injection strategies
-- `ProxyManager` — Byte Buddy proxy creation and registry; delegates actual proxy-class generation to `proxy.ByteBuddyProxyFactory` and scoped-supplier creation to `proxy.ScopedSupplierFactory`; hosts the REQUEST-scope `ThreadLocal` via `proxy.RequestScopeManager`
-- `ScopedInstances` — maps `Scope → InstancesState`; THREAD scope keyed by `Thread` object
+- `ProxyManager` — Byte Buddy proxy creation and registry; delegates actual proxy-class generation to `proxy.ByteBuddyProxyFactory` and scoped-supplier creation to `proxy.ScopedSupplierFactory`; the per-container `proxy.RequestScopeManager` (one instance per container, never static) owns the REQUEST-scope `ThreadLocal`
+- `ScopedInstances` — maps `Scope → InstancesState`; THREAD scope keyed by `Thread` object; also carries the container's `RequestScopeManager` for `Scope.REQUEST.select`
 - `InstancesState` — stores instances and construction-cycle sentinel for one scope/thread slot
 - `ClassesResolver` — determines the relevant concrete `@Injectable` class for a given type; delegates classpath scanning to `ClasspathScanner` and profile/injectable filtering to `InjectableFilter`
 - `Scope` (enum) — each variant selects its own `InstancesState` (polymorphic, no switch)
@@ -117,7 +117,7 @@ Key classes:
 
 **LOCAL** — `Scope.LOCAL.select()` returns `new InstancesState()` on every call, so each proxy dispatch constructs a fresh real instance. Direct `this.method()` calls inside the bean bypass the proxy and are unaffected.
 
-**REQUEST** — `ProxyManager` manages a `ThreadLocal<InstancesState>` with a call-depth counter. The scope is live from the first proxy call on the thread until depth returns to zero; then the `ThreadLocal` is cleared.
+**REQUEST** — the container's `RequestScopeManager` manages a `ThreadLocal<InstancesState>` with a call-depth counter. The scope is live from the first proxy call on the thread until depth returns to zero; then the `ThreadLocal` is cleared. The manager is per-container (wired once in `OOPDI`, shared by interception and selection), so nested call chains of different containers on the same thread stay isolated. Test: `TestScopeBehavior.testRequestScopeIsolatedAcrossDifferentContainers`.
 
 ## Concurrency
 
