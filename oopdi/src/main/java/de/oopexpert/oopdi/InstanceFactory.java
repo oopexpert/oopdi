@@ -41,8 +41,7 @@ public class InstanceFactory {
 
 	public <A> void checkImmediateInstantiationConfiguration(Class<A> c) {
 		if (ProxyManager.isImmediateInstantiationRequested(c) && !Scope.isImmediateInstantiationPossible(c)) {
-			throw new RuntimeException("Misconfiguration of class " + c.getName()
-					+ ": it is configured to be instantiated immediately, but this is only possible with scopes GLOBAL and THREAD.");
+			throw new CannotInject("Misconfiguration of class '%s': it is configured to be instantiated immediately, but this is only possible with scope GLOBAL.".formatted(c.getName()));
 		}
 	}
 
@@ -78,14 +77,14 @@ public class InstanceFactory {
 		} catch (RuntimeException re) {
 			throw re;
 		} catch (Exception e) {
-			throw new RuntimeException(e);
+			throw new CannotInject("Failed to resolve bean for '%s'.".formatted(x.getName()), e);
 		}
 	}
 
 	private <X> X createInstance(Class<?> c, InstancesState scopedMap, ThreadLocal<Boolean> directConstructionPhase) {
 		synchronized (scopedMap.getLockFor(c)) {
 			if (scopedMap.isUnderConstruction(c)) {
-				throw new UnderConstruction(c.getName() + " is still under construction.");
+				throw new UnderConstruction("'%s' is still under construction.".formatted(c.getName()));
 			}
 			scopedMap.markUnderConstruction(c);
 			// Save/restore (not set/reset): resolutions nest - an outer chain resolving its 2nd+
@@ -94,12 +93,12 @@ public class InstanceFactory {
 			// real objects. A null/outermost previous value removes the entry (no pool leak).
 			Boolean previousPhase = directConstructionPhase.get();
 			directConstructionPhase.set(true);
-			try {
-				return instanciateWith(getConstructor(c));
-			} catch (UnderConstruction cd) {
-				throw new CannotInject("Cycle in dependencies detected while performing constructor injection on " + c.getName(), cd);
-			} catch (Exception e) {
-				throw new CannotInject("Failed to instantiate class " + c.getName(), e);
+		try {
+			return instantiateWith(getConstructor(c));
+		} catch (UnderConstruction cd) {
+			throw new CannotInject("Cycle in dependencies detected while performing constructor injection on '%s'.".formatted(c.getName()), cd);
+		} catch (Exception e) {
+			throw new CannotInject("Failed to instantiate class '%s'.".formatted(c.getName()), e);
 			} finally {
 				if (previousPhase == null) {
 					directConstructionPhase.remove();
@@ -112,7 +111,7 @@ public class InstanceFactory {
 	}
 
 	@SuppressWarnings("unchecked")
-	private <X> X instanciateWith(Constructor<?> constructor) throws InstantiationException, IllegalAccessException, InvocationTargetException {
+	private <X> X instantiateWith(Constructor<?> constructor) throws InstantiationException, IllegalAccessException, InvocationTargetException {
 		return (X) constructor.newInstance(resolveConstructorParameters(constructor.getParameterTypes()));
 	}
 
@@ -132,20 +131,20 @@ public class InstanceFactory {
 		ClassMetadata metadata = metadataRepository.getMetadata(c);
 		Constructor<?> primaryConstructor = metadata.getPrimaryConstructor();
 		if (primaryConstructor == null) {
-			throw new RuntimeException("No accessible constructor found for " + c.getName());
+			throw new CannotInject("No accessible constructor found for '%s'.".formatted(c.getName()));
 		}
 		return primaryConstructor;
 	}
 	
 	private <A> void checkNonAbstract(Class<A> c) {
 		if (Modifier.isAbstract(c.getModifiers())) {
-			throw new RuntimeException("Cannot instantiate Class " + c.getName() + ". It is abstract!");
+			throw new CannotInject("Cannot instantiate class '%s': it is abstract.".formatted(c.getName()));
 		}
 	}
 
 	private <A> void checkInjectableAnnotated(Class<A> c) {
 		if (!c.isAnnotationPresent(Injectable.class)) {
-			throw new RuntimeException("Will not instantiate Class " + c.getName() + ". It is not annotated as 'Injectable'!");
+			throw new CannotInject("Will not instantiate class '%s': it is not annotated as 'Injectable'.".formatted(c.getName()));
 		}
 	}
 }

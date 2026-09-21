@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import de.oopexpert.oopdi.exception.MultiplePostConstructMethods;
+import de.oopexpert.oopdi.exception.MultiplePreDestroyMethods;
 import de.oopexpert.oopdi.metadata.ClassMetadata;
 import de.oopexpert.oopdi.metadata.MetadataRepository;
 import de.oopexpert.oopdi.resolver.DependencyResolutionContext;
@@ -38,7 +39,7 @@ public class LifecycleProcessor {
 			try {
 				method.invoke(instance, resolveParameters(parameterTypes));
 			} catch (IllegalAccessException | InvocationTargetException e) {
-				throw new RuntimeException("Failed to invoke @PostConstruct method '" + method.getName() + "' on " + instance.getClass().getName(), e);
+				throw new RuntimeException("Failed to invoke @PostConstruct method '%s' on '%s'.".formatted(method.getName(), instance.getClass().getName()), e);
 			}
 		}
 	}
@@ -48,8 +49,7 @@ public class LifecycleProcessor {
 		Set<java.lang.reflect.Method> preDestroyMethods = metadata.getPreDestroyMethods();
 
 		if (preDestroyMethods.size() > 1) {
-			throw new RuntimeException("Multiple @PreDestroy methods found in class hierarchy of "
-					+ instance.getClass().getName() + ". Only one is allowed.");
+			throw new MultiplePreDestroyMethods(instance.getClass());
 		}
 		if (!preDestroyMethods.isEmpty()) {
 			var method = preDestroyMethods.iterator().next();
@@ -57,8 +57,7 @@ public class LifecycleProcessor {
 			try {
 				method.invoke(instance);
 			} catch (IllegalAccessException | InvocationTargetException e) {
-				throw new RuntimeException("Failed to invoke @PreDestroy method '" + method.getName()
-						+ "' on " + instance.getClass().getName(), e);
+				throw new RuntimeException("Failed to invoke @PreDestroy method '%s' on '%s'.".formatted(method.getName(), instance.getClass().getName()), e);
 			}
 		}
 	}

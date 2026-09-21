@@ -61,8 +61,7 @@ public enum MetadataMode {
 		try {
 			return MetadataMode.valueOf(value.trim());
 		} catch (IllegalArgumentException e) {
-			throw new RuntimeException("Invalid value '" + value + "' for system property '"
-					+ SYSTEM_PROPERTY + "'. Expected one of " + Arrays.toString(values()) + ".", e);
+			throw new IllegalArgumentException("Invalid value '%s' for system property '%s'. Expected one of %s.".formatted(value, SYSTEM_PROPERTY, Arrays.toString(values())), e);
 		}
 	}
 }

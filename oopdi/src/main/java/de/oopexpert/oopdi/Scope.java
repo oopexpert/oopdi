@@ -5,6 +5,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 import de.oopexpert.oopdi.annotation.Injectable;
+import de.oopexpert.oopdi.exception.CannotInject;
 import de.oopexpert.oopdi.proxy.RequestScopeManager;
 
 public enum Scope {
@@ -94,7 +95,11 @@ public enum Scope {
 	abstract boolean isImmediateInstantiationPossible();
 	
 	public static <X> Scope of(Class<X> c) {
-		return c.getAnnotation(Injectable.class).scope();
+		Injectable injectable = c.getAnnotation(Injectable.class);
+		if (injectable == null) {
+			throw new CannotInject("Cannot determine scope of '%s': it is not annotated as 'Injectable'.".formatted(c.getName()));
+		}
+		return injectable.scope();
 	}
 	
 	public static boolean isImmediateInstantiationPossible(Class<?> clazz) {

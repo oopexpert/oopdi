@@ -22,6 +22,6 @@ public final class DependencyResolverPipeline {
                 return resolver.resolve(point, context);
             }
         }
-        throw new CannotInject("Kein passender DependencyResolver für Injektionspunkt [" + point.getType().getName() + "] gefunden.");
+        throw new CannotInject("No matching DependencyResolver found for injection point '%s' declared in '%s'.".formatted(point.getType().getName(), point.getDeclaringClass().getName()));
     }
 }

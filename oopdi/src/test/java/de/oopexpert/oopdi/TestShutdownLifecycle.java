@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import de.oopexpert.oopdi.exception.ContainerShutdown;
+import de.oopexpert.oopdi.exception.DestructionFailed;
 import de.oopexpert.teststructure.ClassA;
 import de.oopexpert.teststructure.ClassFailingPostConstruct;
 import de.oopexpert.teststructure.ClassFailingPreDestroy;
@@ -53,7 +54,7 @@ class TestShutdownLifecycle {
         failing.ping();
         ClassFailingPreDestroy.preDestroyCallCount.set(0);
 
-        RuntimeException ex = Assertions.assertThrows(RuntimeException.class, oopdi::shutdown,
+        RuntimeException ex = Assertions.assertThrows(DestructionFailed.class, oopdi::shutdown,
             "Shutdown with a failing @PreDestroy must still report the failure");
 
         Assertions.assertEquals(1, ClassFailingPreDestroy.preDestroyCallCount.get(),
@@ -73,7 +74,7 @@ class TestShutdownLifecycle {
         failing.ping();
         ClassFailingPreDestroy.preDestroyCallCount.set(0);
 
-        Assertions.assertThrows(RuntimeException.class, oopdi::shutdown);
+        Assertions.assertThrows(DestructionFailed.class, oopdi::shutdown);
         Assertions.assertEquals(1, ClassFailingPreDestroy.preDestroyCallCount.get());
 
         Assertions.assertDoesNotThrow(oopdi::shutdown,

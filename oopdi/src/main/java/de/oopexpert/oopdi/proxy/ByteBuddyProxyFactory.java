@@ -77,7 +77,7 @@ public class ByteBuddyProxyFactory {
 			Class<? extends T> proxyClass = (Class<? extends T>) PROXY_CLASSES.computeIfAbsent(clazz, this::buildProxyClass);
 			return proxyClass.getDeclaredConstructor(parameterTypes).newInstance(args);
 		} catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
-			throw new CannotInject("Failed to instantiate proxy for '" + clazz.getName() + "'", e);
+			throw new CannotInject("Failed to instantiate proxy for '%s'.".formatted(clazz.getName()), e);
 		}
 	}
 

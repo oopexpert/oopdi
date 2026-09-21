@@ -3,7 +3,10 @@ package de.oopexpert.oopdi;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import de.oopexpert.oopdi.exception.DestructionFailed;
+import de.oopexpert.oopdi.exception.MultiplePreDestroyMethods;
 import de.oopexpert.teststructure.ClassA;
+import de.oopexpert.teststructure.ClassMultiplePreDestroyChild;
 import de.oopexpert.teststructure.ClassPostConstructChild;
 import de.oopexpert.teststructure.ClassPostConstructWithParameters;
 import de.oopexpert.teststructure.ClassPreDestroyChild;
@@ -84,6 +87,22 @@ class TestLifecycleHooks {
 
         Assertions.assertEquals(java.util.List.of("dependent", "dependency"), log.getOrder(),
             "@PreDestroy should run in reverse creation order so dependents are destroyed before their dependencies");
+
+    }
+
+    @Test
+    void testMultiplePreDestroyMethodsThrowDedicatedType() {
+
+        OOPDI<ClassMultiplePreDestroyChild> oopdi = new OOPDI<>(ClassMultiplePreDestroyChild.class);
+
+        oopdi.getInstance(ClassMultiplePreDestroyChild.class).isBaseDestroyed();
+
+        DestructionFailed ex = Assertions.assertThrows(DestructionFailed.class, oopdi::shutdown,
+            "Two @PreDestroy methods in one hierarchy must fail shutdown with a dedicated type");
+
+        Assertions.assertEquals(1, ex.getSuppressed().length);
+        Assertions.assertTrue(ex.getSuppressed()[0] instanceof MultiplePreDestroyMethods,
+            "The aggregated cause must be MultiplePreDestroyMethods, mirroring MultiplePostConstructMethods");
 
     }
 

@@ -73,8 +73,7 @@ public class OOPDI<T> implements AutoCloseable {
 
 	private void checkWarmupNotFailedFast() {
 		if (metadataWarmup != null && metadataMode.isFailFast() && metadataWarmup.getStatus() == WarmupStatus.FAILED) {
-			throw new WarmupFailed("Background metadata warmup failed (classpath scan for @Injectable classes); "
-					+ "switch to MetadataMode.WARMUP_LENIENT to keep operating via the on-demand fallback instead.",
+			throw new WarmupFailed("Background metadata warmup failed (classpath scan for @Injectable classes); switch to MetadataMode.WARMUP_LENIENT to keep operating via the on-demand fallback instead.",
 					metadataWarmup.getFailureCause().orElse(null));
 		}
 	}

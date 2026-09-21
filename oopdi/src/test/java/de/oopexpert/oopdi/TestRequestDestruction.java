@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import de.oopexpert.oopdi.exception.DestructionFailed;
 import de.oopexpert.teststructure.ClassRequestFailingPreDestroy;
 import de.oopexpert.teststructure.ClassRequestPreDestroy;
 
@@ -71,7 +72,7 @@ class TestRequestDestruction {
 
         // Both beans land in the same request state; the bad one is created second, so it is
         // destroyed first (reverse creation order) and must not block the good one.
-        RuntimeException ex = Assertions.assertThrows(RuntimeException.class, () -> good.execute(g -> bad.ping()),
+        RuntimeException ex = Assertions.assertThrows(DestructionFailed.class, () -> good.execute(g -> bad.ping()),
             "Failing request-end cleanup must be reported when the main call succeeded");
 
         Assertions.assertEquals(1, ClassRequestFailingPreDestroy.preDestroyCallCount.get());

@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import de.oopexpert.oopdi.exception.CannotInject;
 import de.oopexpert.oopdi.exception.ContainerShutdown;
+import de.oopexpert.oopdi.exception.DestructionFailed;
 import de.oopexpert.oopdi.metadata.ClassMetadata;
 import de.oopexpert.oopdi.metadata.MetadataRepository;
 import de.oopexpert.oopdi.resolver.DependencyResolutionContext;
@@ -79,8 +80,7 @@ public class Context<T> implements InternalResolutionContext {
 	 */
 	private void checkNotShuttingDown() {
 		if (shutdownStatus.get() != ShutdownStatus.ACTIVE) {
-			throw new ContainerShutdown("Container is shutting down or has been shut down; "
-					+ "no new beans can be created (status: " + shutdownStatus.get() + ").");
+			throw new ContainerShutdown("Container is shutting down or has been shut down; no new beans can be created (status: %s).".formatted(shutdownStatus.get()));
 		}
 	}
 
@@ -105,7 +105,7 @@ public class Context<T> implements InternalResolutionContext {
 				try {
 					field.set(instance, resolvedValue);
 				} catch (IllegalAccessException e) {
-					throw new CannotInject("Feldinjektion fehlgeschlagen: " + field.getName(), e);
+					throw new CannotInject("Field injection failed for field '%s' declared in '%s'.".formatted(field.getName(), point.getDeclaringClass().getName()), e);
 				}
 			}
 		}
@@ -148,7 +148,10 @@ public class Context<T> implements InternalResolutionContext {
 							progress = true;
 							try {
 								lifecycleProcessor.invokePreDestroy(instance);
-							} catch (RuntimeException e) {
+							} catch (Throwable e) {
+								// Deliberately Throwable (not just RuntimeException): a failing
+								// cleanup - including an Error - must never abort the remaining
+								// destructions. Everything is aggregated and rethrown below.
 								failures.add(e);
 							}
 						}
@@ -160,9 +163,7 @@ public class Context<T> implements InternalResolutionContext {
 			shutdownStatus.set(failures.isEmpty() ? ShutdownStatus.SHUTDOWN : ShutdownStatus.FAILED);
 		}
 		if (!failures.isEmpty()) {
-			RuntimeException aggregated = new RuntimeException("Shutdown completed with "
-					+ failures.size() + " failing @PreDestroy invocation(s); "
-					+ "all remaining instances were still destroyed best-effort.");
+			DestructionFailed aggregated = new DestructionFailed("Shutdown completed with %d failing @PreDestroy invocation(s); all remaining instances were still destroyed best-effort.".formatted(failures.size()));
 			failures.forEach(aggregated::addSuppressed);
 			throw aggregated;
 		}

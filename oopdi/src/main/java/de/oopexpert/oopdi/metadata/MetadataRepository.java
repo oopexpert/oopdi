@@ -59,7 +59,7 @@ public class MetadataRepository {
 	private Constructor<?> determinePrimaryConstructor(Class<?> clazz) {
 		Constructor<?>[] declaredConstructors = clazz.getDeclaredConstructors();
 		if (declaredConstructors.length > 1) {
-			throw new MultipleConstructors("Multiple constructors for class '" + clazz.getName() + "'. Cannot decide.");
+			throw new MultipleConstructors("Multiple constructors for class '%s'. Cannot decide.".formatted(clazz.getName()));
 		}
 		return declaredConstructors.length == 1 ? declaredConstructors[0] : null;
 	}

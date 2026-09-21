@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import de.oopexpert.oopdi.InstancesState;
+import de.oopexpert.oopdi.exception.DestructionFailed;
 import de.oopexpert.oopdi.exception.NoRequestScopeAvailable;
 
 public class RequestScopeManager {
@@ -69,9 +70,7 @@ public class RequestScopeManager {
 			throw mainFailure;
 		}
 		if (!cleanupFailures.isEmpty()) {
-			RuntimeException aggregated = new RuntimeException("Request chain completed with "
-					+ cleanupFailures.size() + " failing @PreDestroy invocation(s); "
-					+ "all remaining request-scoped instances were still destroyed best-effort.");
+			DestructionFailed aggregated = new DestructionFailed("Request chain completed with %d failing @PreDestroy invocation(s); all remaining request-scoped instances were still destroyed best-effort.".formatted(cleanupFailures.size()));
 			cleanupFailures.forEach(aggregated::addSuppressed);
 			throw aggregated;
 		}
@@ -98,7 +97,9 @@ public class RequestScopeManager {
 			for (Object instance : toDestroy) {
 				try {
 					destroyer.accept(instance);
-				} catch (RuntimeException e) {
+				} catch (Throwable e) {
+					// Deliberately Throwable (not just RuntimeException): a failing cleanup —
+					// including an Error — must never abort the remaining destructions.
 					failures.add(e);
 				}
 			}

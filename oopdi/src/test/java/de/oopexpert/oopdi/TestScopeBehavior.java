@@ -5,9 +5,11 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import de.oopexpert.oopdi.exception.CannotInject;
 import de.oopexpert.teststructure.ClassA;
 import de.oopexpert.teststructure.ClassB;
 import de.oopexpert.teststructure.ClassB1;
+import de.oopexpert.teststructure.ClassB3;
 import de.oopexpert.teststructure.ClassC;
 import de.oopexpert.teststructure.ClassD;
 import de.oopexpert.teststructure.ClassGlobalRace;
@@ -216,6 +218,17 @@ class TestScopeBehavior {
         ClassRoot instanceClassRoot = oopdi.getInstance(ClassRoot.class);
 
         instanceClassRoot.execute(consumerClassD);
+
+    }
+
+    @Test
+    void testScopeOfNonInjectableClassFailsDescriptively() {
+
+        CannotInject ex = Assertions.assertThrows(CannotInject.class, () -> Scope.of(ClassB3.class),
+            "Scope lookup on a non-@Injectable class must fail explicitly instead of NullPointerException");
+
+        Assertions.assertTrue(ex.getMessage().contains(ClassB3.class.getName()),
+            "The error must name the offending class");
 
     }
 

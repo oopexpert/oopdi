@@ -39,23 +39,18 @@ public final class VariableDependencyResolver implements DependencyResolver {
 				valueByKey = annotation.defaultValue();
 			} else if (annotation.optional()) {
 				if (point.getType().isPrimitive()) {
-					throw new CannotInject("Cannot inject variable: key '" + key + "' not found in source "
-							+ source.name() + " for field in " + point.getDeclaringClass().getName()
-							+ " and field type '" + point.getType().getName() + "' is primitive, which cannot hold null. "
-							+ "Use defaultValue or a boxed type instead.");
+					throw new CannotInject("Cannot inject variable: key '%s' not found in source %s for field in '%s' and field type '%s' is primitive, which cannot hold null. Use defaultValue or a boxed type instead.".formatted(key, source.name(), point.getDeclaringClass().getName(), point.getType().getName()));
 				}
 				return null;
 			} else {
-				throw new CannotInject("Cannot inject variable: key '" + key + "' not found in source "
-						+ source.name() + " for field in " + point.getDeclaringClass().getName());
+				throw new CannotInject("Cannot inject variable: key '%s' not found in source %s for field in '%s'.".formatted(key, source.name(), point.getDeclaringClass().getName()));
 			}
 		}
 
 		try {
 			return typeParserRegistry.parse(valueByKey, point.getType());
 		} catch (IllegalArgumentException e) {
-			throw new CannotInject("Cannot inject variable: invalid format for key '" + key + "' in source "
-					+ source.name() + " for field in " + point.getDeclaringClass().getName(), e);
+			throw new CannotInject("Cannot inject variable: invalid format for key '%s' in source %s for field in '%s'.".formatted(key, source.name(), point.getDeclaringClass().getName()), e);
 		}
 	}
 }

@@ -42,11 +42,11 @@ public class ClassesResolver {
 		SequencedSet<Class<T>> filteredClasses = filter.filter(allClasses);
 
 		if (filteredClasses.isEmpty()) {
-			throw new NoClassesLeftAfterFiltering("No classes left after profile/non-abstract filtering (" + c.getName() + ").");
+			throw new NoClassesLeftAfterFiltering("No classes left after profile/non-abstract filtering ('%s').".formatted(c.getName()));
 		}
 
 		if (filteredClasses.size() > 1) {
-			throw new MultipleClassesLeftAfterFiltering("Multiple concrete classes left after profile/non-abstract filtering class hierarchy of class '" + c.getName() + "'. Cannot decide object instantiation.");
+			throw new MultipleClassesLeftAfterFiltering("Multiple concrete classes left after profile/non-abstract filtering class hierarchy of class '%s'. Cannot decide object instantiation.".formatted(c.getName()));
 		}
 
 		return filteredClasses.getFirst();

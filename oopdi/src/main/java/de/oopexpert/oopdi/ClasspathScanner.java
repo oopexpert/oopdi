@@ -12,6 +12,8 @@ import java.util.jar.JarFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import de.oopexpert.oopdi.exception.ClasspathScanFailed;
+
 public class ClasspathScanner {
 
 	private static final Logger log = LoggerFactory.getLogger(ClasspathScanner.class);
@@ -33,7 +35,7 @@ public class ClasspathScanner {
 			}
 			return classes;
 		} catch (ClassNotFoundException | IOException e) {
-			throw new RuntimeException("Failed to scan classpath for subclasses of '" + parentClass.getName() + "' in package '" + packageName + "'", e);
+			throw new ClasspathScanFailed("Failed to scan classpath for subclasses of '%s' in package '%s'.".formatted(parentClass.getName(), packageName), e);
 		}
 	}
 
@@ -51,7 +53,7 @@ public class ClasspathScanner {
 			}
 			return classes;
 		} catch (IOException e) {
-			throw new RuntimeException("Failed to scan classpath for classes annotated with '" + annotation.getName() + "'", e);
+			throw new ClasspathScanFailed("Failed to scan classpath for classes annotated with '%s'.".formatted(annotation.getName()), e);
 		}
 	}
 

@@ -41,7 +41,7 @@ public class MetadataWarmup {
 		this.filter = Objects.requireNonNull(filter, "filter must not be null");
 		this.metadataRepository = Objects.requireNonNull(metadataRepository, "metadataRepository must not be null");
 		if (!Objects.requireNonNull(mode, "mode must not be null").isWarmupEnabled()) {
-			throw new IllegalArgumentException("MetadataWarmup requires a warmup-enabled MetadataMode, got " + mode);
+			throw new IllegalArgumentException("MetadataWarmup requires a warmup-enabled MetadataMode, got %s.".formatted(mode));
 		}
 	}
 
@@ -51,7 +51,7 @@ public class MetadataWarmup {
 	 */
 	public void start() {
 		if (!status.compareAndSet(WarmupStatus.NOT_STARTED, WarmupStatus.RUNNING)) {
-			throw new IllegalStateException("MetadataWarmup has already been started (status: " + status.get() + ").");
+			throw new IllegalStateException("MetadataWarmup has already been started (status: %s).".formatted(status.get()));
 		}
 		Thread thread = new Thread(this::run, "oopdi-metadata-warmup");
 		thread.setDaemon(true);
@@ -69,7 +69,9 @@ public class MetadataWarmup {
 			}
 			status.set(WarmupStatus.READY);
 			log.debug("Metadata warmup completed: {} @Injectable classes inspected", filtered.size());
-		} catch (RuntimeException e) {
+		} catch (Throwable e) {
+			// Deliberately Throwable: any job-level failure (including an Error from class
+			// loading) must surface as FAILED instead of dying silently with status RUNNING.
 			failureCause.set(e);
 			status.set(WarmupStatus.FAILED);
 			log.error("Metadata warmup failed: classpath scan for @Injectable classes threw", e);
@@ -79,7 +81,9 @@ public class MetadataWarmup {
 	private void warmUpOne(Class<?> candidate) {
 		try {
 			metadataRepository.getMetadata(candidate);
-		} catch (RuntimeException e) {
+		} catch (Throwable e) {
+			// Deliberately Throwable: a single unloadable candidate (including LinkageError
+			// variants beyond the scanner's own filtering) must not fail the whole job.
 			log.warn("Metadata warmup: failed to pre-inspect class '{}'; will be re-attempted synchronously on first real use", candidate.getName(), e);
 		}
 	}
