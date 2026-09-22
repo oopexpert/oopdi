@@ -103,7 +103,19 @@ public class OOPDI<T> implements AutoCloseable {
 	public <X> X getInstance(Class<X> clazz) {
 		return getContext().getOrCreateProxy(clazz);
 	}
-	
+
+	/**
+	 * Dry-validates the bean graph reachable from this container's root class without creating
+	 * a single instance: no constructor runs, no field is set, no lifecycle method fires.
+	 * Structural wiring problems are aggregated into one {@code CannotInject}; a silent return
+	 * means the graph would resolve at runtime. Opt-in — call explicitly at application boot.
+	 * Uses this container's active profiles, so validation reflects exactly what resolution
+	 * would see.
+	 */
+	public void validate() {
+		getContext().validateGraph(rootClazz);
+	}
+
 	public synchronized void shutdown() {
 		shutdownRequested = true;
 		if (this.context != null) {

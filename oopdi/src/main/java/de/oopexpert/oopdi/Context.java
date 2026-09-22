@@ -27,6 +27,7 @@ public class Context<T> implements InternalResolutionContext {
 
 	private final ScopedInstances scopedInstances;
 	private final ProxyManager proxyManager;
+	private final ClassesResolver classesResolver;
 	private final DependencyResolverPipeline resolverPipeline;
 	private final InstanceFactory instanceFactory;
 	private final LifecycleProcessor lifecycleProcessor;
@@ -40,6 +41,7 @@ public class Context<T> implements InternalResolutionContext {
 			ProxyManager proxyManager, ClassesResolver classesResolver, MetadataRepository metadataRepository) {
 		this.scopedInstances = Objects.requireNonNull(scopedInstances);
 		this.proxyManager = Objects.requireNonNull(proxyManager);
+		this.classesResolver = Objects.requireNonNull(classesResolver, "classesResolver must not be null");
 		this.metadataRepository = Objects.requireNonNull(metadataRepository, "metadataRepository must not be null");
 
 		this.resolverPipeline = new DependencyResolverPipeline(List.of(
@@ -113,6 +115,17 @@ public class Context<T> implements InternalResolutionContext {
 
 	public ShutdownStatus getShutdownStatus() {
 		return shutdownStatus.get();
+	}
+
+	/**
+	 * Dry-validates the bean graph reachable from the given root class without creating a
+	 * single instance. Structural problems (eligibility, constructor rules, unresolvable
+	 * dependencies, missing variables, cycles, lifecycle cardinalities) are aggregated into
+	 * one {@code CannotInject}; a silent return means the graph would resolve.
+	 */
+	void validateGraph(Class<?> rootClazz) {
+		new GraphValidator(instanceFactory, classesResolver, metadataRepository, resolverPipeline)
+				.validate(rootClazz);
 	}
 
 	/**
