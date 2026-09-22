@@ -536,7 +536,24 @@ entfernt (`TestShutdownLifecycle`).
 
 REQUEST-Beans warten nicht auf `shutdown()`: Sie sterben am Kettenende (gleiche Best-Effort- und
 Aggregations-Semantik; Hauptaufruf-Fehler propagiert mit Cleanup-Fehlern als suppressed). Nur
-`LOCAL`-Beans haben kein Lebenszyklus-Ende (Aufruf-transient, nie gecacht).
+`LOCAL`-Beans haben kein Lebenszyklus-Ende (Aufruf-transient, nie gecacht) — bewusst ohne
+`@PreDestroy`-Unterstützung, daran ist nichts geplant.
+
+### Startup-Validierung mit `validate()`
+
+```java
+OOPDI<ClassRoot> oopdi = new OOPDI<>(ClassRoot.class);
+oopdi.validate(); // wirft CannotInject mit allen Verdrahtungsproblemen — oder schweigt
+```
+
+`validate()` prüft den von der Root-Klasse erreichbaren Graphen **trocken**: Keine Bean wird
+erzeugt, kein Konstruktor läuft, kein Feld wird gesetzt. Geprüft werden Eignung,
+Konstruktor-Regeln, auflösbare Konstruktor-/Feld-`@PostConstruct`-Abhängigkeiten,
+`@InjectSet`-Hints (unter den aktiven Profilen des Containers), Variablen-Verfügbarkeit und
+Lifecycle-Kardinalitäten; Zyklen werden mit Pfad gemeldet. Alle Probleme landen aggregiert in
+einem `CannotInject`; stilles Zurückkehren heißt, der Graph würde zur Laufzeit auflösen. Opt-in —
+wer es nicht aufruft, merkt keinen Unterschied (`TestStartupValidation`, Fixtures
+`ClassBrokenGraphRoot`, `ClassBrokenCycleA/B`).
 
 ## 9. Proxy-Verhalten
 

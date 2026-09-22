@@ -289,7 +289,23 @@ If more than one method in a class is annotated with `@PostConstruct`, the frame
 
 A single `@PreDestroy` method per class hierarchy (no parameters) declares cleanup logic. Call `oopdi.shutdown()` (or `close()`) once at application teardown: every managed instance is destroyed in reverse creation order, best-effort — a failing cleanup does not prevent the remaining instances from being destroyed; the individual failures are aggregated on the thrown error. Shutdown is idempotent and observable via `oopdi.getShutdownStatus()`. After shutdown has started, no new beans are created anymore: requests fail fast with `ContainerShutdown` instead of producing instances that could never be destroyed again (already-resolved beans stay readable from their scope cache).
 
-REQUEST-scoped beans do not wait for shutdown: they are destroyed when their call chain ends, in reverse creation order with the same best-effort semantics (a failing request-end cleanup is reported without hiding the call's own outcome). LOCAL-scoped beans are call-transient and never cached, so there is nothing to destroy for them.
+REQUEST-scoped beans do not wait for shutdown: they are destroyed when their call chain ends, in reverse creation order with the same best-effort semantics (a failing request-end cleanup is reported without hiding the call's own outcome). LOCAL-scoped beans are call-transient and never cached, so there is nothing to destroy for them — intentionally no `@PreDestroy` support for LOCAL.
+
+## Startup Validation with `validate()`
+
+Call `oopdi.validate()` explicitly at application boot to dry-validate the bean graph reachable
+from the container's root class: no constructor runs, no field is set, no lifecycle method fires.
+Eligibility, constructor rules, resolvable constructor/field/`@PostConstruct` dependencies,
+`@InjectSet` hints (under the container's active profiles), variable presence and lifecycle
+cardinalities are checked; dependency cycles are reported with their path. All problems found
+are aggregated into a single `CannotInject` so one boot run shows the whole wiring state;
+a silent return means the graph would resolve at runtime. Nothing about normal resolution
+changes for applications that never call it.
+
+```java
+OOPDI<AppConfig> oopdi = new OOPDI<>(AppConfig.class);
+oopdi.validate(); // throws CannotInject listing every wiring problem, or returns silently
+```
 
 ## Usage Guidelines
 
