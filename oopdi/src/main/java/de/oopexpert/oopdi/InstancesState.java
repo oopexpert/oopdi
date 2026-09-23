@@ -61,6 +61,12 @@ public class InstancesState {
 		constructorInjection.remove(c);
 	}
 
+	/**
+	 * @deprecated Production code only needs destruction order; use
+	 *             {@link #allInstancesInReverseCreationOrder()} instead.
+	 *             To be removed in 1.0.
+	 */
+	@Deprecated(forRemoval = true)
 	public Collection<Object> allInstances() {
 		synchronized (instances) {
 			return List.copyOf(instances.values());

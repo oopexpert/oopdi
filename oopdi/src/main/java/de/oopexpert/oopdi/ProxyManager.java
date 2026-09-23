@@ -40,12 +40,24 @@ public class ProxyManager {
 		return requestScopeManager;
 	}
 
+	/**
+	 * @deprecated Unused convenience overload; use
+	 *             {@link #proxyIfNotExists(Class, Consumer, Function)} instead.
+	 *             To be removed in 1.0.
+	 */
+	@Deprecated(forRemoval = true)
 	public <B> B proxyIfNotExists(B instance) {
 		@SuppressWarnings("unchecked")
 		Class<B> clazz = (Class<B>) instance.getClass();
 		return proxyIfNotExists(clazz, c -> instance);
 	}
 
+	/**
+	 * @deprecated Unused convenience overload; use
+	 *             {@link #proxyIfNotExists(Class, Consumer, Function)} instead.
+	 *             To be removed in 1.0.
+	 */
+	@Deprecated(forRemoval = true)
 	public <T> T proxyIfNotExists(Class<T> clazz, Function<Class<T>, T> realObjectCreator) {
 		return proxyIfNotExists(clazz, c -> { }, realObjectCreator);
 	}
