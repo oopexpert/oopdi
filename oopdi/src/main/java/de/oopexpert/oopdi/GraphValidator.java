@@ -7,6 +7,7 @@ import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 import de.oopexpert.oopdi.annotation.InjectSet;
@@ -47,43 +48,196 @@ public final class GraphValidator {
 
 	public void validate(Class<?> rootClazz) {
 		Objects.requireNonNull(rootClazz, "rootClazz must not be null");
-		List<String> problems = new ArrayList<>();
-		List<Throwable> causes = new ArrayList<>();
-		visit(rootClazz, new ArrayDeque<>(), new HashSet<>(), problems, causes);
-		if (!problems.isEmpty()) {
+		Traversal traversal = new Traversal(instanceFactory, classesResolver, metadataRepository);
+		visit(rootClazz, traversal);
+		if (!traversal.problems.isEmpty()) {
 			CannotInject aggregated = new CannotInject("Startup validation failed with %d problem(s):\n- %s".formatted(
-					problems.size(), String.join("\n- ", problems)));
-			causes.forEach(aggregated::addSuppressed);
+					traversal.problems.size(), String.join("\n- ", traversal.problems)));
+			traversal.causes.forEach(aggregated::addSuppressed);
 			throw aggregated;
 		}
 	}
 
-	private void visit(Class<?> requested, Deque<Class<?>> path, Set<Class<?>> done,
-			List<String> problems, List<Throwable> causes) {
-		// Mirrors Context.getOrCreate first: eligibility of the requested type.
-		try {
-			instanceFactory.validateEligible(requested);
-		} catch (RuntimeException e) {
-			problems.add("'%s': %s".formatted(requested.getName(), e.getMessage()));
-			causes.add(e);
-			done.add(requested);
-			return;
+	private void visit(Class<?> requested, Traversal traversal) {
+		Optional<Class<?>> relevant = traversal.resolve(requested);
+		if (relevant.isPresent() && traversal.enter(relevant.get())) {
+			try {
+				inspect(relevant.get(), traversal);
+			} finally {
+				traversal.leave(relevant.get());
+			}
 		}
-		// Mirrors InstanceFactory.getOrCreateInjectable first step: resolve the relevant
-		// concrete class (profile filtering, hierarchy scan). This is what actually gets built.
-		Class<?> relevant;
-		try {
-			relevant = classesResolver.determineRelevantClass(requested);
-		} catch (RuntimeException e) {
-			problems.add("'%s': %s".formatted(requested.getName(), e.getMessage()));
-			causes.add(e);
-			done.add(requested);
-			return;
+	}
+
+	private void inspect(Class<?> relevant, Traversal traversal) {
+		Optional<ClassMetadata> metadata = traversal.inspectMetadata(relevant);
+		if (metadata.isPresent()) {
+			ClassMetadata inspected = metadata.get();
+			traversal.checkLifecycle(inspected);
+			inspectConstructor(inspected, traversal);
+			inspectFields(inspected, traversal);
+			inspectPostConstruct(inspected, traversal);
 		}
-		if (done.contains(relevant)) {
-			return;
+	}
+
+	private void inspectConstructor(ClassMetadata metadata, Traversal traversal) {
+		var primaryConstructor = metadata.getPrimaryConstructor();
+		if (primaryConstructor != null) {
+			for (Class<?> parameterType : primaryConstructor.getParameterTypes()) {
+				traverseDependency(parameterType, traversal);
+			}
 		}
-		if (path.contains(relevant)) {
+	}
+
+	private void inspectFields(ClassMetadata metadata, Traversal traversal) {
+		for (InjectionPoint point : metadata.getFieldInjectionPoints()) {
+			if (resolverPipeline.supports(point)) {
+				traversal.inspectField(metadata.getTargetClass(), point)
+						.ifPresent(dependency -> visit(dependency, traversal));
+			}
+		}
+	}
+
+	private void inspectPostConstruct(ClassMetadata metadata, Traversal traversal) {
+		for (Method postConstruct : metadata.getPostConstructMethods()) {
+			for (Class<?> parameterType : postConstruct.getParameterTypes()) {
+				traverseDependency(parameterType, traversal);
+			}
+		}
+	}
+
+	private void traverseDependency(Class<?> dependency, Traversal traversal) {
+		// No special-casing for primitives, Strings or arrays: the runtime resolves every
+		// constructor parameter through getOrCreate (which rejects anything non-eligible), so
+		// the validator must report them the same way instead of silently skipping them.
+		// Only the container itself is directly injectable without being a bean.
+		if (!OOPDI.class.isAssignableFrom(dependency)) {
+			visit(dependency, traversal);
+		}
+	}
+
+	/**
+	 * Bundles the mutable traversal state (chain, finished set, collected problems) that would
+	 * otherwise be threaded through every method as parameters.
+	 */
+	private static final class Traversal {
+
+		private final InstanceFactory instanceFactory;
+		private final ClassesResolver classesResolver;
+		private final MetadataRepository metadataRepository;
+
+		private final Deque<Class<?>> path = new ArrayDeque<>();
+		private final Set<Class<?>> done = new HashSet<>();
+		private final List<String> problems = new ArrayList<>();
+		private final List<Throwable> causes = new ArrayList<>();
+
+		Traversal(InstanceFactory instanceFactory, ClassesResolver classesResolver,
+				MetadataRepository metadataRepository) {
+			this.instanceFactory = instanceFactory;
+			this.classesResolver = classesResolver;
+			this.metadataRepository = metadataRepository;
+		}
+
+		/**
+		 * Runs eligibility and relevant-class resolution for a requested type, recording any
+		 * failure. Empty means the type contributes nothing further to the traversal. A single
+		 * try/catch covers both steps in runtime order (eligibility of the requested type
+		 * first): whichever step fails, the failure is recorded and resolution stops there,
+		 * exactly as the runtime would fail at the same step.
+		 */
+		Optional<Class<?>> resolve(Class<?> requested) {
+			Class<?> relevant = null;
+			try {
+				// Mirrors Context.getOrCreate first: eligibility of the requested type.
+				instanceFactory.validateEligible(requested);
+				// Mirrors InstanceFactory.getOrCreateInjectable first step: resolve the relevant
+				// concrete class (profile filtering, hierarchy scan). This is what actually gets built.
+				relevant = classesResolver.determineRelevantClass(requested);
+			} catch (RuntimeException e) {
+				problem(requested, e);
+				done.add(requested);
+			}
+			return Optional.ofNullable(relevant);
+		}
+
+		/**
+		 * Enters a resolved class into the current chain. Returns false when there is nothing
+		 * to inspect: either already fully validated, or part of a dependency cycle (which is
+		 * reported with its path instead).
+		 */
+		boolean enter(Class<?> relevant) {
+			boolean fresh = !done.contains(relevant);
+			if (fresh && path.contains(relevant)) {
+				problem(relevant.getName(), "dependency cycle detected: %s.".formatted(describeCycle(relevant)));
+				fresh = false;
+			}
+			if (fresh) {
+				path.push(relevant);
+			}
+			return fresh;
+		}
+
+		void leave(Class<?> relevant) {
+			path.pop();
+			done.add(relevant);
+		}
+
+		/**
+		 * Inspects reflective metadata, recording structural violations. Empty means the class
+		 * contributes nothing further to the traversal.
+		 */
+		Optional<ClassMetadata> inspectMetadata(Class<?> relevant) {
+			ClassMetadata metadata = null;
+			try {
+				metadata = metadataRepository.getMetadata(relevant);
+			} catch (RuntimeException e) {
+				problem(relevant, e);
+			}
+			return Optional.ofNullable(metadata);
+		}
+
+		void checkLifecycle(ClassMetadata metadata) {
+			Class<?> target = metadata.getTargetClass();
+			if (metadata.getPostConstructMethods().size() > 1) {
+				problem(target.getName(), "multiple @PostConstruct methods found in class hierarchy; only one is allowed.");
+			}
+			if (metadata.getPreDestroyMethods().size() > 1) {
+				problem(target.getName(), "multiple @PreDestroy methods found in class hierarchy; only one is allowed.");
+			}
+			for (Method preDestroy : metadata.getPreDestroyMethods()) {
+				if (preDestroy.getParameterCount() > 0) {
+					problem(target.getName(), "@PreDestroy method '%s' takes parameters; none are allowed.".formatted(preDestroy.getName()));
+				}
+			}
+		}
+
+		/**
+		 * Checks a single supported field injection point inline (variable presence, set
+		 * resolvability) and returns the bean type to traverse further, if any. Problems are
+		 * attributed to the owning bean, matching runtime resolution messages.
+		 */
+		Optional<Class<?>> inspectField(Class<?> owner, InjectionPoint point) {
+			Optional<Class<?>> dependency = Optional.empty();
+			if (point.hasAnnotation(InjectVariable.class)) {
+				try {
+					VariableDependencyResolver.requireVariableValue(point);
+				} catch (CannotInject e) {
+					problem(owner, e);
+				}
+			} else if (point.hasAnnotation(InjectSet.class)) {
+				Class<?> hint = point.findAnnotation(InjectSet.class).orElseThrow().hint();
+				try {
+					classesResolver.getSet(hint);
+				} catch (RuntimeException e) {
+					problem(owner, e);
+				}
+			} else {
+				dependency = Optional.of(point.getType());
+			}
+			return dependency;
+		}
+
+		private String describeCycle(Class<?> relevant) {
 			List<String> cycle = new ArrayList<>();
 			boolean recording = false;
 			var steps = path.descendingIterator();
@@ -97,80 +251,16 @@ public final class GraphValidator {
 				}
 			}
 			cycle.add(relevant.getName());
-			problems.add("'%s': dependency cycle detected: %s.".formatted(
-					relevant.getName(), String.join(" -> ", cycle)));
-			return;
+			return String.join(" -> ", cycle);
 		}
-		path.push(relevant);
-		try {
-			ClassMetadata metadata;
-			try {
-				metadata = metadataRepository.getMetadata(relevant);
-			} catch (RuntimeException e) {
-				problems.add("'%s': %s".formatted(relevant.getName(), e.getMessage()));
-				causes.add(e);
-				return;
-			}
-			if (metadata.getPostConstructMethods().size() > 1) {
-				problems.add("'%s': multiple @PostConstruct methods found in class hierarchy; only one is allowed.".formatted(relevant.getName()));
-			}
-			if (metadata.getPreDestroyMethods().size() > 1) {
-				problems.add("'%s': multiple @PreDestroy methods found in class hierarchy; only one is allowed.".formatted(relevant.getName()));
-			}
-			for (Method preDestroy : metadata.getPreDestroyMethods()) {
-				if (preDestroy.getParameterCount() > 0) {
-					problems.add("'%s': @PreDestroy method '%s' takes parameters; none are allowed.".formatted(relevant.getName(), preDestroy.getName()));
-				}
-			}
-			var primaryConstructor = metadata.getPrimaryConstructor();
-			if (primaryConstructor != null) {
-				for (Class<?> parameterType : primaryConstructor.getParameterTypes()) {
-					visitDependency(parameterType, path, done, problems, causes);
-				}
-			}
-			for (InjectionPoint point : metadata.getFieldInjectionPoints()) {
-				if (!resolverPipeline.supports(point)) {
-					continue;
-				}
-				if (point.hasAnnotation(InjectVariable.class)) {
-					try {
-						VariableDependencyResolver.requireVariableValue(point);
-					} catch (CannotInject e) {
-						problems.add("'%s': %s".formatted(relevant.getName(), e.getMessage()));
-						causes.add(e);
-					}
-				} else if (point.hasAnnotation(InjectSet.class)) {
-					Class<?> hint = point.findAnnotation(InjectSet.class).orElseThrow().hint();
-					try {
-						classesResolver.getSet(hint);
-					} catch (RuntimeException e) {
-						problems.add("'%s': %s".formatted(relevant.getName(), e.getMessage()));
-						causes.add(e);
-					}
-				} else {
-					visitDependency(point.getType(), path, done, problems, causes);
-				}
-			}
-			for (Method postConstruct : metadata.getPostConstructMethods()) {
-				for (Class<?> parameterType : postConstruct.getParameterTypes()) {
-					visitDependency(parameterType, path, done, problems, causes);
-				}
-			}
-		} finally {
-			path.pop();
-			done.add(relevant);
-		}
-	}
 
-	private void visitDependency(Class<?> dependency, Deque<Class<?>> path, Set<Class<?>> done,
-			List<String> problems, List<Throwable> causes) {
-		// No special-casing for primitives, Strings or arrays: the runtime resolves every
-		// constructor parameter through getOrCreate (which rejects anything non-eligible), so
-		// the validator must report them the same way instead of silently skipping them.
-		// Only the container itself is directly injectable without being a bean.
-		if (OOPDI.class.isAssignableFrom(dependency)) {
-			return;
+		private void problem(Class<?> owner, RuntimeException e) {
+			problem(owner.getName(), e.getMessage());
+			causes.add(e);
 		}
-		visit(dependency, path, done, problems, causes);
+
+		private void problem(String ownerName, String detail) {
+			problems.add("'%s': %s".formatted(ownerName, detail));
+		}
 	}
 }
