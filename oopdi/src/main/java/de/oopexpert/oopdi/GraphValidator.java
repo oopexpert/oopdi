@@ -1,6 +1,8 @@
 package de.oopexpert.oopdi;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -83,6 +85,7 @@ public final class GraphValidator {
 		Optional<ClassMetadata> metadata = traversal.inspectMetadata(relevant);
 		if (metadata.isPresent()) {
 			ClassMetadata inspected = metadata.get();
+			traversal.checkProxiability(relevant, inspected);
 			traversal.checkLifecycle(inspected);
 			inspectConstructor(inspected, traversal);
 			inspectFields(inspected, traversal);
@@ -267,6 +270,20 @@ public final class GraphValidator {
 			return Optional.ofNullable(metadata);
 		}
 
+		void checkProxiability(Class<?> relevant, ClassMetadata metadata) {
+			// Mirrors the two runtime construction paths, neither of which opens reflective
+			// access on constructors: ByteBuddy cannot subclass a final class, and
+			// Constructor.newInstance rejects a private constructor without setAccessible.
+			if (Modifier.isFinal(relevant.getModifiers())) {
+				problem(relevant.getName(), "class is final and cannot be subclass-proxied; managed classes must not be final.");
+			} else {
+				Constructor<?> primaryConstructor = metadata.getPrimaryConstructor();
+				if (primaryConstructor != null && Modifier.isPrivate(primaryConstructor.getModifiers())) {
+					problem(relevant.getName(), "primary constructor is private and cannot be invoked without reflective override; use a non-private constructor.");
+				}
+			}
+		}
+
 		void checkLifecycle(ClassMetadata metadata) {
 			Class<?> target = metadata.getTargetClass();
 			try {
@@ -300,14 +317,24 @@ public final class GraphValidator {
 				try {
 					String value = VariableDependencyResolver.requireVariableValue(point);
 					if (value != null) {
-				try {
-					typeParserRegistry.parse(value, point.getType());
-				} catch (IllegalArgumentException e) {
-					problem(owner.getName(), "Cannot inject variable: invalid format for key '%s' in source %s for field in '%s' (value '%s').".formatted(
-							point.findAnnotation(InjectVariable.class).orElseThrow().key(),
-							point.findAnnotation(InjectVariable.class).orElseThrow().source().name(),
-							owner.getName(), value), e);
-				}
+						Object parsed;
+						try {
+							parsed = typeParserRegistry.parse(value, point.getType());
+						} catch (RuntimeException e) {
+							// Deliberately wider than IllegalArgumentException (mirrored below in the
+							// runtime resolver): parsers like charAt(0) fail with other runtime
+							// exceptions on degenerate input such as empty strings.
+							problem(owner.getName(), "Cannot inject variable: invalid format for key '%s' in source %s for field in '%s' (value '%s').".formatted(
+									point.findAnnotation(InjectVariable.class).orElseThrow().key(),
+									point.findAnnotation(InjectVariable.class).orElseThrow().source().name(),
+									owner.getName(), value), e);
+							return dependencies;
+						}
+						if (!isAssignableToField(parsed, point.getType())) {
+							problem(owner.getName(), "Cannot inject variable: value of type '%s' is not assignable to field of type '%s' for key '%s'.".formatted(
+									parsed.getClass().getName(), point.getType().getName(),
+									point.findAnnotation(InjectVariable.class).orElseThrow().key()));
+						}
 					}
 				} catch (CannotInject e) {
 					problem(owner, e);
@@ -349,6 +376,15 @@ public final class GraphValidator {
 
 		private void problem(String ownerName, String detail) {
 			problems.add("'%s': %s".formatted(ownerName, detail));
+		}
+
+		/**
+		 * Mirrors what {@code Field.set} accepts at runtime: reference equality, plus boxing
+		 * for primitives (a successfully parsed primitive value always arrives boxed in the
+		 * matching wrapper, so no per-type table is needed here).
+		 */
+		private static boolean isAssignableToField(Object value, Class<?> fieldType) {
+			return fieldType.isInstance(value) || fieldType.isPrimitive();
 		}
 
 		private void problem(String ownerName, String detail, Throwable cause) {

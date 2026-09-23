@@ -1,13 +1,24 @@
 package de.oopexpert.oopdi;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import de.oopexpert.oopdi.exception.ContainerShutdown;
 import de.oopexpert.oopdi.exception.DestructionFailed;
+import de.oopexpert.oopdi.metadata.MetadataMode;
+import de.oopexpert.oopdi.metadata.MetadataRepository;
+import de.oopexpert.oopdi.proxy.RequestScopeManager;
+import de.oopexpert.oopdi.resolver.DependencyResolutionContext;
 import de.oopexpert.teststructure.ClassA;
 import de.oopexpert.teststructure.ClassFailingPostConstruct;
+import de.oopexpert.teststructure.ClassFailingPostConstructError;
 import de.oopexpert.teststructure.ClassFailingPreDestroy;
+import de.oopexpert.teststructure.ClassSlowConstruction;
 import de.oopexpert.teststructure.ClassWithPreDestroy;
 
 /**
@@ -122,5 +133,100 @@ class TestShutdownLifecycle {
 
         Assertions.assertDoesNotThrow(oopdi::shutdown,
             "Shutdown must tolerate failed beans that left nothing behind");
+    }
+
+    @Test
+    void testBeanFinishingConstructionDuringShutdownIsDestroyedImmediately() throws InterruptedException {
+        OOPDI<ClassSlowConstruction> oopdi = new OOPDI<>(ClassSlowConstruction.class);
+        ClassSlowConstruction proxy = oopdi.getInstance(ClassSlowConstruction.class);
+
+        ClassSlowConstruction.enteredConstructor = new CountDownLatch(1);
+        ClassSlowConstruction.releaseConstructor = new CountDownLatch(1);
+        ClassSlowConstruction.preDestroyCallCount.set(0);
+        AtomicReference<Throwable> workerFailure = new AtomicReference<>();
+
+        Thread worker = new Thread(() -> {
+            try {
+                proxy.ping();
+            } catch (Throwable t) {
+                workerFailure.compareAndSet(null, t);
+            }
+        });
+        worker.start();
+
+        // The worker is now blocked inside the constructor, i.e. past the entry guard.
+        Assertions.assertTrue(ClassSlowConstruction.enteredConstructor.await(5, TimeUnit.SECONDS),
+            "Worker must reach the constructor");
+        oopdi.shutdown();
+        ClassSlowConstruction.releaseConstructor.countDown();
+        worker.join(5000);
+
+        Assertions.assertTrue(workerFailure.get() instanceof ContainerShutdown,
+            "Finishing construction during shutdown must fail fast, but was: " + workerFailure.get());
+        Assertions.assertEquals(1, ClassSlowConstruction.preDestroyCallCount.get(),
+            "The late-finishing instance must be destroyed immediately instead of cached without @PreDestroy");
+        Assertions.assertThrows(ContainerShutdown.class, () -> oopdi.getInstance(ClassSlowConstruction.class).ping(),
+            "Nothing may have been cached for later use");
+    }
+
+    @Test
+    void testErrorInPostConstructLeavesNothingBehindInCache() {
+        OOPDI<ClassFailingPostConstructError> oopdi = new OOPDI<>(ClassFailingPostConstructError.class);
+
+        oopdi.getInstance(ClassFailingPostConstructError.class);
+        ClassFailingPostConstructError.constructorCallCount.set(0);
+
+        // The AssertionError surfaces wrapped (reflection wraps it in InvocationTargetException
+        // at the invoke boundary); what matters here is that nothing stays cached.
+        RuntimeException first = Assertions.assertThrows(RuntimeException.class,
+            () -> oopdi.getInstance(ClassFailingPostConstructError.class).ping(),
+            "Failing @PostConstruct must propagate");
+        Assertions.assertTrue(first.getMessage().contains("Failed to invoke @PostConstruct"));
+
+        Assertions.assertThrows(RuntimeException.class, () -> oopdi.getInstance(ClassFailingPostConstructError.class).ping(),
+            "A failed bean must not stay behind half-initialized in the cache, including on Error");
+
+        Assertions.assertEquals(2, ClassFailingPostConstructError.constructorCallCount.get(),
+            "Every new request after a failed post-processing must rebuild instead of reusing a broken cached object");
+    }
+
+    @Test
+    void testRawErrorInPostProcessorRemovesCachedInstance() {
+        // Drives InstanceFactory directly with a post-processor that throws a raw Error:
+        // Errors bypass every RuntimeException catch, so only the widened compensation
+        // (RuntimeException | Error) removes the half-built instance from the cache.
+        DependencyResolutionContext stubContext = new DependencyResolutionContext() {
+            @Override
+            public <A> A getOrCreate(Class<A> clazz) {
+                throw new UnsupportedOperationException("not used by this test");
+            }
+
+            @Override
+            public boolean isDirectConstructionPhase() {
+                return false;
+            }
+        };
+        InstanceFactory factory = new InstanceFactory(stubContext, new ClassesResolver(),
+                null, new MetadataRepository(MetadataMode.DISABLED),
+                () -> ShutdownStatus.ACTIVE, instance -> {
+                });
+        ScopedInstances scopedInstances = new ScopedInstances(new RequestScopeManager());
+        Consumer<Object> failingPostProcessor = instance -> {
+            throw new AssertionError("Simulated Error in post-processing");
+        };
+
+        ClassFailingPostConstructError.constructorCallCount.set(0);
+
+        AssertionError first = Assertions.assertThrows(AssertionError.class, () -> factory.getOrCreateInjectable(
+                ClassFailingPostConstructError.class, scopedInstances, failingPostProcessor, new ThreadLocal<>()),
+            "A raw Error must propagate unwrapped");
+        Assertions.assertEquals("Simulated Error in post-processing", first.getMessage());
+
+        Assertions.assertThrows(AssertionError.class, () -> factory.getOrCreateInjectable(
+                ClassFailingPostConstructError.class, scopedInstances, failingPostProcessor, new ThreadLocal<>()),
+            "A failed bean must not stay behind half-initialized in the cache, including on Error");
+
+        Assertions.assertEquals(2, ClassFailingPostConstructError.constructorCallCount.get(),
+            "Every new request after a failed post-processing must rebuild instead of reusing a broken cached object");
     }
 }

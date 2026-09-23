@@ -76,7 +76,10 @@ public class ByteBuddyProxyFactory {
 		try {
 			Class<? extends T> proxyClass = (Class<? extends T>) PROXY_CLASSES.computeIfAbsent(clazz, this::buildProxyClass);
 			return proxyClass.getDeclaredConstructor(parameterTypes).newInstance(args);
-		} catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
+			// IllegalArgumentException included deliberately: ByteBuddy rejects what it cannot
+			// subclass (e.g. final classes) with an unchecked error during class generation;
+			// surface it as a descriptive CannotInject like every other proxy-creation failure.
+		} catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException | IllegalArgumentException e) {
 			throw new CannotInject("Failed to instantiate proxy for '%s'.".formatted(clazz.getName()), e);
 		}
 	}

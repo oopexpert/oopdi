@@ -34,7 +34,10 @@ public final class VariableDependencyResolver implements DependencyResolver {
 
 		try {
 			return typeParserRegistry.parse(valueByKey, point.getType());
-		} catch (IllegalArgumentException e) {
+		} catch (RuntimeException e) {
+			// Deliberately wider than IllegalArgumentException: parsers fail with other
+			// runtime exceptions on degenerate input (e.g. charAt(0) on an empty string).
+			// Mirrored in the validator's trial parse.
 			throw new CannotInject("Cannot inject variable: invalid format for key '%s' in source %s for field in '%s'.".formatted(annotation.key(), annotation.source().name(), point.getDeclaringClass().getName()), e);
 		}
 	}

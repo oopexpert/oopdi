@@ -51,7 +51,8 @@ public class Context<T> implements InternalResolutionContext {
 		));
 
 		this.lifecycleProcessor = new LifecycleProcessor(this, oopdi, metadataRepository);
-		this.instanceFactory = new InstanceFactory(this, classesResolver, oopdi, metadataRepository);
+		this.instanceFactory = new InstanceFactory(this, classesResolver, oopdi, metadataRepository,
+				shutdownStatus::get, lifecycleProcessor::invokePreDestroy);
 
 		// Request-scoped beans die with their call chain: wire the lifecycle processor as the
 		// request-end destroyer (set after construction to avoid a wiring cycle; the volatile
@@ -106,7 +107,9 @@ public class Context<T> implements InternalResolutionContext {
 				Object resolvedValue = resolverPipeline.resolve(point, this);
 				try {
 					field.set(instance, resolvedValue);
-				} catch (IllegalAccessException e) {
+				} catch (IllegalAccessException | IllegalArgumentException e) {
+					// IllegalArgumentException covers wrong-type values reaching a field
+					// (e.g. an unparsable custom type falling back to String).
 					throw new CannotInject("Field injection failed for field '%s' declared in '%s'.".formatted(field.getName(), point.getDeclaringClass().getName()), e);
 				}
 			}

@@ -7,12 +7,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import de.oopexpert.oopdi.annotation.Injectable;
 import de.oopexpert.oopdi.exception.CannotInject;
+import de.oopexpert.oopdi.exception.ContainerShutdown;
 import de.oopexpert.oopdi.exception.UnderConstruction;
 import de.oopexpert.oopdi.metadata.ClassMetadata;
 import de.oopexpert.oopdi.metadata.MetadataRepository;
@@ -26,11 +28,16 @@ public class InstanceFactory {
 	private final ClassesResolver classesResolver;
 	private final OOPDI<?> oopdi;
 	private final MetadataRepository metadataRepository;
+	private final Supplier<ShutdownStatus> shutdownState;
+	private final Consumer<Object> immediateDestroyer;
 
-	public InstanceFactory(DependencyResolutionContext context, ClassesResolver classesResolver, OOPDI<?> oopdi, MetadataRepository metadataRepository) {
+	public InstanceFactory(DependencyResolutionContext context, ClassesResolver classesResolver, OOPDI<?> oopdi, MetadataRepository metadataRepository,
+			Supplier<ShutdownStatus> shutdownState, Consumer<Object> immediateDestroyer) {
 		this.context = Objects.requireNonNull(context, "context must not be null");
 		this.classesResolver = Objects.requireNonNull(classesResolver, "classesResolver must not be null");
 		this.metadataRepository = Objects.requireNonNull(metadataRepository, "metadataRepository must not be null");
+		this.shutdownState = Objects.requireNonNull(shutdownState, "shutdownState must not be null");
+		this.immediateDestroyer = Objects.requireNonNull(immediateDestroyer, "immediateDestroyer must not be null");
 		this.oopdi = oopdi;
 	}
 	
@@ -54,16 +61,33 @@ public class InstanceFactory {
 			synchronized (scopedMap.getLockFor(c)) {
 				if (!scopedMap.instanceExists(c)) {
 					instance = createInstance(c, scopedMap, directConstructionPhase);
+					if (shutdownState.get() != ShutdownStatus.ACTIVE) {
+						// Lost the race against shutdown: this chain passed the entry guard
+						// before shutdown began but finished after. Never cache it (the
+						// shutdown drain may already have taken its final snapshot) — destroy
+						// it immediately instead, best-effort, then fail fast.
+						try {
+							immediateDestroyer.accept(instance);
+						} catch (Throwable t) {
+							ContainerShutdown shutdown = new ContainerShutdown("Container is shutting down or has been shut down; newly created instance of '%s' was destroyed immediately instead of caching.".formatted(c.getName()));
+							shutdown.addSuppressed(t);
+							throw shutdown;
+						}
+						throw new ContainerShutdown("Container is shutting down or has been shut down; newly created instance of '%s' was destroyed immediately instead of caching.".formatted(c.getName()));
+					}
 					scopedMap.put(c, instance);
 					log.debug("Created instance of {}", c.getName());
 					try {
 						postProcessor.accept(instance);
-					} catch (RuntimeException e) {
+					} catch (RuntimeException | Error e) {
 						// The bean is fully constructed but post-processing (field injection,
 						// @PostConstruct) failed: remove it again so no half-initialized
-						// instance stays behind in the cache. Field-injection cycles keep
-						// working because the early put above is unchanged for the success
-						// path; only the failure path compensates.
+						// instance stays behind in the cache. Deliberately including Error:
+						// even a failed Error must not leave a broken entry behind
+						// (precise rethrow keeps the original unchecked type, no throws
+						// declaration needed). Field-injection cycles keep working because
+						// the early put above is unchanged for the success path; only the
+						// failure path compensates.
 						scopedMap.remove(c);
 						throw e;
 					}

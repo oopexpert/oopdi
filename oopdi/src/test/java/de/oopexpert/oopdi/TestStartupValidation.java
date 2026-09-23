@@ -1,15 +1,22 @@
 package de.oopexpert.oopdi;
 
+import java.util.Map;
+
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import de.oopexpert.oopdi.exception.CannotInject;
 import de.oopexpert.teststructure.ClassBrokenFormatVar;
 import de.oopexpert.teststructure.ClassBrokenGraphRoot;
+import de.oopexpert.teststructure.ClassBrokenProxiabilityRoot;
 import de.oopexpert.teststructure.ClassBrokenSetRoot;
+import de.oopexpert.teststructure.ClassEmptyCharVar;
 import de.oopexpert.teststructure.ClassFieldCycleA;
+import de.oopexpert.teststructure.ClassFinalBean;
 import de.oopexpert.teststructure.ClassImmediateLocalMisconfig;
 import de.oopexpert.teststructure.ClassNestedOuter;
+import de.oopexpert.teststructure.ClassPrivateCtor;
+import de.oopexpert.teststructure.ClassUuidVar;
 
 /**
  * Verifies opt-in startup validation ({@link OOPDI#validate()}): a dry run over the reachable
@@ -106,5 +113,66 @@ class TestStartupValidation {
         Assertions.assertDoesNotThrow(oopdi::validate);
         Assertions.assertDoesNotThrow(oopdi::validate,
             "Validation must hold no per-run state and stay repeatable");
+    }
+
+    @Test
+    void testFinalClassIsReportedByValidationAndRuntime() {
+        OOPDI<ClassBrokenProxiabilityRoot> oopdi = new OOPDI<>(ClassBrokenProxiabilityRoot.class);
+
+        CannotInject validationFailure = Assertions.assertThrows(CannotInject.class, oopdi::validate,
+            "A final managed class must fail startup validation");
+        Assertions.assertTrue(validationFailure.getMessage().contains(ClassFinalBean.class.getName())
+                && validationFailure.getMessage().contains("final"),
+            "The final class must be named as unproxiable, but was: " + validationFailure.getMessage());
+
+        // Runtime parity through the direct root: ByteBuddy cannot subclass it either —
+        // but as CannotInject, not raw IllegalArgumentException.
+        OOPDI<ClassFinalBean> direct = new OOPDI<>(ClassFinalBean.class);
+        Assertions.assertThrows(CannotInject.class, () -> direct.getInstance(ClassFinalBean.class),
+            "A final managed class must fail resolution descriptively at runtime, too");
+    }
+
+    @Test
+    void testPrivateConstructorIsReportedByValidationAndRuntime() {
+        OOPDI<ClassBrokenProxiabilityRoot> oopdi = new OOPDI<>(ClassBrokenProxiabilityRoot.class);
+
+        CannotInject validationFailure = Assertions.assertThrows(CannotInject.class, oopdi::validate,
+            "A private primary constructor must fail startup validation");
+        Assertions.assertTrue(validationFailure.getMessage().contains(ClassPrivateCtor.class.getName())
+                && validationFailure.getMessage().contains("private"),
+            "The constructor visibility must be named, but was: " + validationFailure.getMessage());
+
+        OOPDI<ClassPrivateCtor> direct = new OOPDI<>(ClassPrivateCtor.class);
+        Assertions.assertThrows(CannotInject.class, () -> direct.getInstance(ClassPrivateCtor.class),
+            "A private primary constructor must fail resolution descriptively at runtime, too");
+    }
+
+    @Test
+    void testEmptyVariableValueIsReportedByValidationAndRuntime() {
+        try (TestSystemProperties.Scope ignored = TestSystemProperties.withProperties(
+                Map.of("definitelySetKey_emptyChar", ""))) {
+            OOPDI<ClassEmptyCharVar> oopdi = new OOPDI<>(ClassEmptyCharVar.class);
+
+            CannotInject validationFailure = Assertions.assertThrows(CannotInject.class, oopdi::validate,
+                "An empty variable value for a char field must fail startup validation");
+            Assertions.assertTrue(validationFailure.getMessage().contains("definitelySetKey_emptyChar"),
+                "The key must be named, but was: " + validationFailure.getMessage());
+
+            Assertions.assertThrows(CannotInject.class, () -> oopdi.getInstance(ClassEmptyCharVar.class).getValue(),
+                "An empty variable value for a char field must fail resolution descriptively at runtime, too");
+        }
+    }
+
+    @Test
+    void testUnassignableVariableValueIsReportedByValidationAndRuntime() {
+        OOPDI<ClassUuidVar> oopdi = new OOPDI<>(ClassUuidVar.class);
+
+        CannotInject validationFailure = Assertions.assertThrows(CannotInject.class, oopdi::validate,
+            "A variable value of the wrong type must fail startup validation");
+        Assertions.assertTrue(validationFailure.getMessage().contains("not assignable"),
+            "The assignability problem must be named, but was: " + validationFailure.getMessage());
+
+        Assertions.assertThrows(CannotInject.class, () -> oopdi.getInstance(ClassUuidVar.class).getId(),
+            "A variable value of the wrong type must fail resolution descriptively at runtime, too");
     }
 }
