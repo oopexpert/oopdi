@@ -19,7 +19,7 @@ mvn test
   (use `Select-String`), `Out-File`/`>` redirection encoding pitfalls (UTF-16 default for `>`,
   no `utf8NoBOM` in PS 5.1 `Set-Content`), no Python. Prefer dedicated file tools over shell
   for file ops; avoid `git apply` patch surgery — use exact-match edits instead.
-- 75 tests green (JUnit Jupiter 5, `Test*` per feature + `teststructure` fixtures).
+- 78 tests green (JUnit Jupiter 5, `Test*` per feature + `teststructure` fixtures).
 
 ## Architecture (verified)
 
@@ -38,7 +38,12 @@ mvn test
 - Shutdown state machine (`ShutdownStatus`, single-winner CAS, idempotent): best-effort
   drain-loop destruction, `DestructionFailed` aggregation; `InstancesState.remove`
   compensates failed post-processing; `OOPDI.shutdownRequested` covers shutdown-before-use.
-- REQUEST beans die at chain end (same best-effort semantics); LOCAL has no lifecycle end.
+- REQUEST beans die at chain end (same best-effort semantics); LOCAL has no lifecycle end
+  by design (call-transient, no `@PreDestroy` support planned).
+- `OOPDI.validate()` dry-validates the reachable bean graph (no instantiation, no side
+  effects) via `GraphValidator`, reusing runtime checks (`InstanceFactory` eligibility,
+  shared `VariableDependencyResolver.requireVariableValue`); all problems aggregated into
+  one `CannotInject`.
   Scope state is container-local for every scope (REQUEST via per-container
   `RequestScopeManager`, never static).
 - Per-class locks for same-bean creation; shared caches are synchronized maps with snapshot
@@ -70,7 +75,7 @@ mvn test
 ## Open follow-ups (not started)
 
 - Maven Central publishing (needs account + GPG + workflow secrets; POM not Central-ready).
-- Eager startup validation / preinstantiation (needs scoping: LOCAL/REQUEST, profiles,
-  missing variables at boot).
-- LOCAL `@PreDestroy` semantics undecided (currently no lifecycle end by design).
-- 1.0 API freeze decision pending.
+  Deferred: GitHub Packages preferred, and no publishing at all for now.
+- 1.0 API freeze decision pending (includes whether/when to reintroduce the reverted
+  `@Deprecated(forRemoval = true)` ceremony — dropped as premature while OOPDI has no
+  external users).
