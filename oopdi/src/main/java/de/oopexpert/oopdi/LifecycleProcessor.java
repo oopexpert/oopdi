@@ -4,6 +4,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 import de.oopexpert.oopdi.exception.MultiplePostConstructMethods;
@@ -25,15 +26,11 @@ public class LifecycleProcessor {
 	}
 
 	public void executePostConstruct(Object instance) {
-		ClassMetadata metadata = metadataRepository.getMetadata(instance.getClass());
-		Set<java.lang.reflect.Method> postConstructMethods = metadata.getPostConstructMethods();
+		Optional<java.lang.reflect.Method> postConstruct = findPostConstructMethod(
+				metadataRepository.getMetadata(instance.getClass()));
 
-		if (postConstructMethods.size() > 1) {
-			throw new MultiplePostConstructMethods(instance.getClass());
-		}
-
-		if (!postConstructMethods.isEmpty()) {
-			var method = postConstructMethods.iterator().next();
+		if (postConstruct.isPresent()) {
+			var method = postConstruct.get();
 			var parameterTypes = method.getParameterTypes();
 			method.setAccessible(true);
 			try {
@@ -45,14 +42,11 @@ public class LifecycleProcessor {
 	}
 
 	public void invokePreDestroy(Object instance) {
-		ClassMetadata metadata = metadataRepository.getMetadata(instance.getClass());
-		Set<java.lang.reflect.Method> preDestroyMethods = metadata.getPreDestroyMethods();
+		Optional<java.lang.reflect.Method> preDestroy = findPreDestroyMethod(
+				metadataRepository.getMetadata(instance.getClass()));
 
-		if (preDestroyMethods.size() > 1) {
-			throw new MultiplePreDestroyMethods(instance.getClass());
-		}
-		if (!preDestroyMethods.isEmpty()) {
-			var method = preDestroyMethods.iterator().next();
+		if (preDestroy.isPresent()) {
+			var method = preDestroy.get();
 			method.setAccessible(true);
 			try {
 				method.invoke(instance);
@@ -60,6 +54,36 @@ public class LifecycleProcessor {
 				throw new RuntimeException("Failed to invoke @PreDestroy method '%s' on '%s'.".formatted(method.getName(), instance.getClass().getName()), e);
 			}
 		}
+	}
+
+	/**
+	 * Finds the single {@code @PostConstruct} method of a class hierarchy, shared by runtime
+	 * invocation and startup graph validation so both enforce the same cardinality with the
+	 * same message.
+	 */
+	public Optional<java.lang.reflect.Method> findPostConstructMethod(ClassMetadata metadata) {
+		Set<java.lang.reflect.Method> postConstructMethods = metadata.getPostConstructMethods();
+
+		if (postConstructMethods.size() > 1) {
+			throw new MultiplePostConstructMethods(metadata.getTargetClass());
+		}
+
+		return postConstructMethods.stream().findFirst();
+	}
+
+	/**
+	 * Finds the single {@code @PreDestroy} method of a class hierarchy, shared by runtime
+	 * invocation and startup graph validation so both enforce the same cardinality with the
+	 * same message.
+	 */
+	public Optional<java.lang.reflect.Method> findPreDestroyMethod(ClassMetadata metadata) {
+		Set<java.lang.reflect.Method> preDestroyMethods = metadata.getPreDestroyMethods();
+
+		if (preDestroyMethods.size() > 1) {
+			throw new MultiplePreDestroyMethods(metadata.getTargetClass());
+		}
+
+		return preDestroyMethods.stream().findFirst();
 	}
 
 	private Object[] resolveParameters(Class<?>[] parameterTypes) {

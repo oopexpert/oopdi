@@ -124,7 +124,7 @@ public class Context<T> implements InternalResolutionContext {
 	 * one {@code CannotInject}; a silent return means the graph would resolve.
 	 */
 	void validateGraph(Class<?> rootClazz) {
-		new GraphValidator(instanceFactory, classesResolver, metadataRepository, resolverPipeline)
+		new GraphValidator(instanceFactory, classesResolver, metadataRepository, resolverPipeline, lifecycleProcessor)
 				.validate(rootClazz);
 	}
 
