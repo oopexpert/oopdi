@@ -212,6 +212,9 @@ Test classes live under `de.oopexpert.teststructure`:
 | `ClassFieldCycleA`/`ClassFieldCycleB` | GLOBAL | Pure field cycle; must validate silently (runtime tolerates it), proving the cycle rule covers constructor edges only |
 | `ClassBrokenSetRoot`/`ClassBrokenSetBase`/`ClassBrokenSetImpl` | GLOBAL | `@InjectSet` hierarchy with broken element subgraph; verifies element traversal |
 | `ClassBrokenFormatVar` | GLOBAL | Unparsable variable default value; verifies trial parsing |
+| `ClassFinalBean` / `ClassPrivateCtor` (+ holder `ClassBrokenProxiabilityRoot`) | GLOBAL | Unproxiable/unconstructable beans; verify proxiability check in validator and descriptive runtime failure |
+| `ClassEmptyCharVar` | GLOBAL | Empty variable value for a `char` field; verifies widened parse-failure catch on both paths |
+| `ClassUuidVar` | GLOBAL | Variable value of unassignable type; verifies assignability check in validator and wrapped `Field.set` failure |
 | `ClassOptionalPrimitiveVar` | GLOBAL | Optional `@InjectVariable` into a primitive field with missing key; verifies descriptive `CannotInject` instead of opaque reflective failure |
 | `ClassNestedOuter`/`ClassNestedDepA`/`ClassNestedDepB` | GLOBAL | Nested construction chain; verifies field injection inside it resolves the real object, not a proxy |
 | `ClassMultiplePreDestroyChild` | GLOBAL | Second `@PreDestroy` on top of the inherited one; verifies `MultiplePreDestroyMethods` inside `DestructionFailed` aggregation |
