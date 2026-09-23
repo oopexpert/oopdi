@@ -295,12 +295,13 @@ REQUEST-scoped beans do not wait for shutdown: they are destroyed when their cal
 
 Call `oopdi.validate()` explicitly at application boot to dry-validate the bean graph reachable
 from the container's root class: no constructor runs, no field is set, no lifecycle method fires.
-Eligibility, constructor rules, resolvable constructor/field/`@PostConstruct` dependencies,
-`@InjectSet` hints (under the container's active profiles), variable presence and lifecycle
-cardinalities are checked; dependency cycles are reported with their path. All problems found
-are aggregated into a single `CannotInject` so one boot run shows the whole wiring state;
-a silent return means the graph would resolve at runtime. Nothing about normal resolution
-changes for applications that never call it.
+Eligibility, constructor rules, `immediate` configuration, resolvable constructor/field/`@PostConstruct`
+dependencies, `@InjectSet` hints including element subgraphs (under the container's active profiles),
+variable presence *and* parsability, and lifecycle cardinalities are checked; only loops consisting
+solely of constructor edges are reported as cycles (field-only loops resolve at runtime and stay
+silent). All problems found are aggregated into a single `CannotInject` so one boot run shows the
+whole wiring state; a silent return means the graph would resolve at runtime. Nothing about normal
+resolution changes for applications that never call it.
 
 ```java
 OOPDI<AppConfig> oopdi = new OOPDI<>(AppConfig.class);

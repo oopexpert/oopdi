@@ -548,11 +548,14 @@ oopdi.validate(); // wirft CannotInject mit allen Verdrahtungsproblemen — oder
 
 `validate()` prüft den von der Root-Klasse erreichbaren Graphen **trocken**: Keine Bean wird
 erzeugt, kein Konstruktor läuft, kein Feld wird gesetzt. Geprüft werden Eignung,
-Konstruktor-Regeln, auflösbare Konstruktor-/Feld-`@PostConstruct`-Abhängigkeiten,
-`@InjectSet`-Hints (unter den aktiven Profilen des Containers), Variablen-Verfügbarkeit und
-Lifecycle-Kardinalitäten; Zyklen werden mit Pfad gemeldet. Alle Probleme landen aggregiert in
-einem `CannotInject`; stilles Zurückkehren heißt, der Graph würde zur Laufzeit auflösen. Opt-in —
-wer es nicht aufruft, merkt keinen Unterschied (`TestStartupValidation`, Fixtures
+Konstruktor-Regeln, `immediate`-Konfiguration, auflösbare Konstruktor-/Feld-`@PostConstruct`-
+Abhängigkeiten, `@InjectSet`-Hints inklusive ihrer Element-Untergraphen (unter den aktiven
+Profilen des Containers), Variablen-Verfügbarkeit **und** -Parsbarkeit sowie Lifecycle-
+Kardinalitäten. Als Zyklus zählt nur, was die Runtime wirklich nicht auflösen kann: Schleifen,
+die ausschließlich aus Konstruktor-Kanten bestehen (mit Pfad gemeldet); reine Feld-Schleifen
+löst die Runtime über gecachte Instanzen auf und bleiben still. Alle Probleme landen aggregiert
+in einem `CannotInject`; stilles Zurückkehren heißt, der Graph würde zur Laufzeit auflösen.
+Opt-in — wer es nicht aufruft, merkt keinen Unterschied (`TestStartupValidation`, Fixtures
 `ClassBrokenGraphRoot`, `ClassBrokenCycleA/B`).
 
 ## 9. Proxy-Verhalten
