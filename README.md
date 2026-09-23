@@ -334,8 +334,6 @@ Avoid holding raw references to real objects. Always interact with the injected 
 
 The supported public contract consists of the `OOPDI` entry point, the annotations, `DependencyResolutionContext`, the exceptions, and the `MetadataMode`/`ShutdownStatus`/`WarmupStatus` enums. Everything else (notably casts to internal types such as `InternalResolutionContext`, and reflective access to proxies or framework internals) is unsupported territory: it may change without notice, and developers who bypass the public API this way are responsible for keeping their own application consistent. There is deliberately no JPMS enforcement — the boundary is a documented convention, not a technical barrier.
 
-Elements that are no longer used internally but still public carry `@Deprecated(forRemoval = true)` instead of being deleted outright: they keep working until 1.0, when the removal path completes. The intentional customization hook `TypeParserRegistry.registerParser` (custom `@InjectVariable` value parsers) is explicitly excluded from deprecation.
-
 ## Advanced Topics
 
 ### Circular Dependencies

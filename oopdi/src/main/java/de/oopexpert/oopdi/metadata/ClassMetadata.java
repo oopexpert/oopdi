@@ -33,11 +33,6 @@ public final class ClassMetadata {
 		this.preDestroyMethods = Set.copyOf(preDestroyMethods);
 	}
 
-	/**
-	 * @deprecated Unread introspection detail; the class is always known by the caller holding
-	 *             the metadata. No replacement. To be removed in 1.0.
-	 */
-	@Deprecated(forRemoval = true)
 	public Class<?> getTargetClass() {
 		return targetClass;
 	}

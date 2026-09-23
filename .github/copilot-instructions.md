@@ -44,7 +44,6 @@ Pre-commit checklist for architecture-relevant changes (proxy library, scopes, l
 4. `/memories/repo/oopdi.md` — updated?
 
 Recent verified insights that must stay reflected in helper docs:
-- Deprecation policy: public but unused API is marked `@Deprecated(forRemoval = true)` with a `@deprecated` javadoc naming the replacement (or stating there is none) — never deleted outright before 1.0, when the removal path completes. Currently deprecated: `ProxyManager.proxyIfNotExists` 1-arg/2-arg overloads (use the 3-arg variant), `InstancesState.allInstances()` (use `allInstancesInReverseCreationOrder()`), `UnderConstruction(String, UnderConstruction)` (use 1-arg), `ClassMetadata.getTargetClass()` (no replacement), `MetadataRepository()` no-arg ctor (use the `MetadataMode` ctor), `MetadataRepository.isCacheEnabled()` (no replacement), `ParameterInjectionPoint` incl. its sealed-`permits` entry (use `FieldInjectionPoint`). `TypeParserRegistry.registerParser` is the intentional customization hook and is explicitly excluded.
 - `immediate=true` is invalid for THREAD, LOCAL, and REQUEST scopes.
 - Misconfiguration for these scope/immediate combinations is observable as a runtime failure when the proxy-invoked method is executed.
 - GLOBAL scope singleton behavior is container-local; different `OOPDI` instances do not share GLOBAL bean instances. Since the REQUEST-scope fix, this holds for every scope: REQUEST state is per-container (`RequestScopeManager` instance, never static), THREAD via per-container maps, LOCAL trivially.

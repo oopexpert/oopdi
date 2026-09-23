@@ -27,11 +27,6 @@ public class MetadataRepository {
 	private final boolean cacheEnabled;
 	private final ConcurrentHashMap<Class<?>, ClassMetadata> cache = new ConcurrentHashMap<>();
 
-	/**
-	 * @deprecated Prefer the explicit {@link #MetadataRepository(MetadataMode)} constructor;
-	 *             the behavior is identical. To be removed in 1.0.
-	 */
-	@Deprecated(forRemoval = true)
 	public MetadataRepository() {
 		this(MetadataMode.fromSystemProperty());
 	}
@@ -40,11 +35,6 @@ public class MetadataRepository {
 		this.cacheEnabled = Objects.requireNonNull(mode, "mode must not be null").isCacheEnabled();
 	}
 
-	/**
-	 * @deprecated Introspection-only flag with no production readers; configure behavior via
-	 *             {@link MetadataMode} instead. No replacement. To be removed in 1.0.
-	 */
-	@Deprecated(forRemoval = true)
 	public boolean isCacheEnabled() {
 		return cacheEnabled;
 	}

@@ -6,12 +6,6 @@ public class UnderConstruction extends RuntimeException {
 		super(string);
 	}
 
-	/**
-	 * @deprecated Never constructed with a cause internally; use
-	 *             {@link #UnderConstruction(String)} instead. External construction of
-	 *             framework-internal sentinel exceptions is unsupported. To be removed in 1.0.
-	 */
-	@Deprecated(forRemoval = true)
 	public UnderConstruction(String string, UnderConstruction cd) {
 		super(string, cd);
 	}

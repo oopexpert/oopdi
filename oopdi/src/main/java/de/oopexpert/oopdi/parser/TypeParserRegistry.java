@@ -36,11 +36,6 @@ public class TypeParserRegistry {
 		return parser != null ? parser.apply(value) : value;
 	}
 
-	/**
-	 * Registers (or overrides) the parser used to convert injected variable strings into the
-	 * given target type. This is the intentional customization hook for application-specific
-	 * value types; it is deliberately not deprecated.
-	 */
 	public void registerParser(Class<?> type, Function<String, Object> parser) {
 		typeParsers.put(type, parser);
 	}
