@@ -61,6 +61,7 @@ Full architecture, concurrency, and lifecycle details: see [.github/copilot-inst
 - Failure taxonomy: eligibility/config problems throw `CannotInject` (never bare `RuntimeException` or NPE — e.g. `Scope.of` on a non-`@Injectable` class); destruction aggregation throws `DestructionFailed`; lifecycle cardinalities throw `MultipleConstructors`/`MultiplePostConstructMethods`/`MultiplePreDestroyMethods`; scan infrastructure failures throw `ClasspathScanFailed`.
 - `ClassesResolver.determineRelevantClass` fills its result cache atomically (`computeIfAbsent`): racing first-time resolutions of the same type share one classpath scan.
 - API boundary: the public contract is `OOPDI`, the annotations, `DependencyResolutionContext`, the exceptions, and the `MetadataMode`/`ShutdownStatus`/`WarmupStatus` enums. Casts to internal types (e.g. `InternalResolutionContext`) and reflective access to framework internals are unsupported territory — developers who bypass the public API this way keep their application consistent themselves. No JPMS enforcement is planned.
+- Deprecation policy: public but unused API is marked `@Deprecated(forRemoval = true)` with a `@deprecated` javadoc naming the replacement (or stating there is none) — never deleted outright before 1.0, when the removal path completes. `TypeParserRegistry.registerParser` is the intentional customization hook and is explicitly excluded.
 
 ## Testing Instructions
 
