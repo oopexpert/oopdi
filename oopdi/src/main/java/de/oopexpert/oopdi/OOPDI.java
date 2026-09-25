@@ -12,13 +12,15 @@ import de.oopexpert.oopdi.proxy.RequestScopeManager;
 
 public class OOPDI<T> implements AutoCloseable {
 
-	private static final String BANNER = """
-			____    ____    ____    ____    ____
-			  / __ \\  / __ \\  / __ \\  / __ \\  /  _/
-			 / / / / / / / / / /_/ / / / / /  / /
-			/ /_/ / / /_/ / / ____/ / /_/ / _/ /
-			\\____/  \\____/ /_/     /_____/ /___/
-			""";
+	// Built from explicit literals (not a text block): text blocks derive their
+	// indentation from the closing delimiter, which silently garbles ASCII art on
+	// mixed tabs/spaces. Each line below matches README.md byte-for-byte.
+	private static final String BANNER =
+			"____    ____    ____    ____    ____\n"
+			+ "  / __ \\  / __ \\  / __ \\  / __ \\  /  _/\n"
+			+ " / / / / / / / / / /_/ / / / / /  / /\n"
+			+ "/ /_/ / / /_/ / / ____/ / /_/ / _/ /\n"
+			+ "\\____/  \\____/ /_/     /_____/ /___/\n";
 
 	private final ScopedInstances scopedInstances;
 	private final Class<T> rootClazz;
