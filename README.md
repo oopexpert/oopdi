@@ -1,3 +1,11 @@
+```
+____    ____    ____    ____    ____
+  / __ \  / __ \  / __ \  / __ \  /  _/
+ / / / / / / / / / /_/ / / / / /  / /
+/ /_/ / / /_/ / / ____/ / /_/ / _/ /
+\____/  \____/ /_/     /_____/ /___/
+```
+
 # OOPDI: Lightweight Dependency Injection Framework
 
 1. [Introduction](#introduction)

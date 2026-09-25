@@ -12,6 +12,14 @@ import de.oopexpert.oopdi.proxy.RequestScopeManager;
 
 public class OOPDI<T> implements AutoCloseable {
 
+	private static final String BANNER = """
+			____    ____    ____    ____    ____
+			  / __ \\  / __ \\  / __ \\  / __ \\  /  _/
+			 / / / / / / / / / /_/ / / / / /  / /
+			/ /_/ / / /_/ / / ____/ / /_/ / _/ /
+			\\____/  \\____/ /_/     /_____/ /___/
+			""";
+
 	private final ScopedInstances scopedInstances;
 	private final Class<T> rootClazz;
 	private final ProxyManager proxyManager;
@@ -58,6 +66,9 @@ public class OOPDI<T> implements AutoCloseable {
 		} else {
 			this.metadataWarmup = null;
 		}
+		// Startup banner goes to stdout (not the logger): an SLF4J backend is optional, so a
+		// logger call could vanish silently for consumers without one.
+		System.out.println(BANNER);
 	}
 
 	synchronized Context<T> getContext() {
