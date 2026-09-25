@@ -693,7 +693,30 @@ mvn test
 
 Testklassen liegen unter `oopdi/src/test/java/de/oopexpert/oopdi/` (ein Feature pro Klasse, z. B.
 `TestScopeBehavior`, `TestLifecycleHooks`), Fixture-Klassen unter
-`oopdi/src/test/java/de/oopexpert/teststructure/`. Aktueller Stand: u. a. `TestShutdownLifecycle`
+`oopdi/src/test/java/de/oopexpert/teststructure/`.
+
+### Benchmarks (JMH, manuell)
+
+Leistungskennzahlen entstehen über JMH-Benchmarks unter
+`oopdi/src/test/java/de/oopexpert/oopdi/benchmark/` (`ProxyClassBenchmark`,
+`MetadataInspectionBenchmark`, `ContainerStartupBenchmark`, `ScopeDispatchBenchmark`,
+`WarmupBenchmark`; JMH 1.37, `test`-scoped). Sie laufen **nie** als Teil von `mvn test`
+(Namenskonvention plus explizites Surefire-Exclude in `oopdi/pom.xml`) und werden bei Bedarf
+manuell gestartet — z. B. für eine schnelle Rauchprüfung einer einzelnen Benchmark-Klasse:
+
+```powershell
+$env:JAVA_HOME = "C:\Daten\Programmierung\environments\jdk-21.0.5+11"
+$env:PATH = "$env:JAVA_HOME\bin;C:\Daten\Programmierung\environments\apache-maven-3.9.15\bin;$env:PATH"
+cd oopdi
+mvn test-compile
+mvn org.apache.maven.plugins:maven-dependency-plugin:3.8.1:build-classpath "-Dmdep.outputFile=$env:TEMP\cp.txt" "-Dmdep.includeScope=test"
+$cp = "target\test-classes;target\classes;" + (Get-Content "$env:TEMP\cp.txt" -Raw).Trim()
+& "$env:JAVA_HOME\bin\java.exe" -cp $cp org.openjdk.jmh.Main MetadataInspectionBenchmark -wi 1 -i 1 -f 1
+```
+
+Volle Läufe (`-wi 5 -i 5 -f 2`) nur lokal auf Wunsch, nie in CI. Ergebnisse sind
+Hardware-abhängig und gehören nicht ins Repo — Benchmarks liefern Baselines für künftige
+Entscheidungen, keine Garantien. Aktueller Stand: u. a. `TestShutdownLifecycle`
 (Shutdown-State-Machine, Best-Effort-Aggregation, `shutdown()` vor Erstnutzung),
 `TestRequestDestruction` (REQUEST-Ende-Destruction), `TestSecurityValidation`
 (Eligibility-Garantie), `TestScopedInstances`/`TestInstancesState` (Cache-Thread-Safety),

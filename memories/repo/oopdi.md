@@ -19,7 +19,9 @@ mvn test
   (use `Select-String`), `Out-File`/`>` redirection encoding pitfalls (UTF-16 default for `>`,
   no `utf8NoBOM` in PS 5.1 `Set-Content`), no Python. Prefer dedicated file tools over shell
   for file ops; avoid `git apply` patch surgery — use exact-match edits instead.
-- 78 tests green (JUnit Jupiter 5, `Test*` per feature + `teststructure` fixtures).
+- 89 tests green (JUnit Jupiter 5, `Test*` per feature + `teststructure` fixtures).
+- JMH benchmarks under `.../oopdi/benchmark/` (`*Benchmark`, test-scoped JMH 1.37) run manually
+  only, never in `mvn test`; results are hardware-dependent and never committed.
 
 ## Architecture (verified)
 

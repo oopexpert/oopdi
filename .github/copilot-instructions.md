@@ -44,6 +44,7 @@ Pre-commit checklist for architecture-relevant changes (proxy library, scopes, l
 4. `/memories/repo/oopdi.md` — updated?
 
 Recent verified insights that must stay reflected in helper docs:
+- JMH benchmarks (`.../oopdi/benchmark/`, `*Benchmark`, test-scoped JMH 1.37) measure proxy/metadata/scope/warmup baselines manually only — never part of `mvn test` (naming avoids surefire defaults plus an explicit `pom.xml` exclude). First smoke run: uncached metadata inspect ~0.97 µs/op vs. cached lookup ~0.008 µs/op (~120×). Results are hardware-dependent and never committed.
 - `immediate=true` is invalid for THREAD, LOCAL, and REQUEST scopes.
 - Misconfiguration for these scope/immediate combinations is observable as a runtime failure when the proxy-invoked method is executed.
 - GLOBAL scope singleton behavior is container-local; different `OOPDI` instances do not share GLOBAL bean instances. Since the REQUEST-scope fix, this holds for every scope: REQUEST state is per-container (`RequestScopeManager` instance, never static), THREAD via per-container maps, LOCAL trivially.

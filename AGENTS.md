@@ -68,6 +68,7 @@ Full architecture, concurrency, and lifecycle details: see [.github/copilot-inst
 - Test classes: `Test*` under `oopdi/src/test/java/de/oopexpert/oopdi/`, one feature per class (e.g. `TestScopeBehavior`, `TestLifecycleHooks`).
 - Fixture classes: `Class*` under `oopdi/src/test/java/de/oopexpert/teststructure/`.
 - Run all tests with `mvn test` (see Setup above) before considering any change complete.
+- JMH benchmarks live under `.../oopdi/benchmark/` (`*Benchmark`, test-scoped JMH 1.37); they never run as part of `mvn test` (naming avoids surefire defaults plus an explicit exclude in `pom.xml`) and are executed manually only.
 
 ## Release Process
 
