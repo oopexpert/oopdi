@@ -16,7 +16,7 @@ public class OOPDI<T> implements AutoCloseable {
 	// indentation from the closing delimiter, which silently garbles ASCII art on
 	// mixed tabs/spaces. Each line below matches README.md byte-for-byte.
 	private static final String BANNER =
-			"____    ____    ____    ____    ____\n"
+			"   ____    ____    ____    ____    ____\n"
 			+ "  / __ \\  / __ \\  / __ \\  / __ \\  /  _/\n"
 			+ " / / / / / / / / / /_/ / / / / /  / /\n"
 			+ "/ /_/ / / /_/ / / ____/ / /_/ / _/ /\n"
