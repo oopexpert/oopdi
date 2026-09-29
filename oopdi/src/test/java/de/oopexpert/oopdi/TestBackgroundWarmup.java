@@ -15,7 +15,7 @@ import de.oopexpert.teststructure.ClassA;
 
 /**
  * Verifies OOPDI's wiring of {@link MetadataMode}/background metadata warmup: default behavior
- * is unchanged, an invalid mode value fails fast at construction, a successful warmup reaches
+ * is unchanged, an invalid mode value fails fast at first use (lazy init), a successful warmup reaches
  * {@link WarmupStatus#READY} without affecting normal bean resolution, and a job-level warmup
  * failure is either surfaced (WARMUP_FAIL_FAST) or silently tolerated via the existing on-demand
  * fallback (WARMUP_LENIENT).
@@ -39,9 +39,11 @@ class TestBackgroundWarmup {
     }
 
     @Test
-    void testInvalidModeFailsFastAtConstruction() {
+    void testInvalidModeFailsFastAtFirstUse() {
         try (var ignored = TestSystemProperties.withProperties(Map.of(MetadataMode.SYSTEM_PROPERTY, "NotAValidMode"))) {
-            Assertions.assertThrows(RuntimeException.class, () -> new OOPDI<>(ClassA.class));
+            OOPDI<ClassA> oopdi = new OOPDI<>(ClassA.class);
+            Assertions.assertThrows(RuntimeException.class, oopdi::getWarmupStatus);
+            Assertions.assertThrows(RuntimeException.class, () -> oopdi.getInstance(ClassA.class));
         }
     }
 
@@ -70,7 +72,8 @@ class TestBackgroundWarmup {
     @Test
     void testWarmupFailFastModePropagatesJobLevelFailureOnNextGetInstance() {
         try (var ignored = TestSystemProperties.withProperties(Map.of(MetadataMode.SYSTEM_PROPERTY, "WARMUP_FAIL_FAST"))) {
-            OOPDI<ClassA> oopdi = new OOPDI<>(ClassA.class, new BrokenClasspathScanner());
+            OOPDI<ClassA> oopdi = new OOPDI<>(ClassA.class);
+            injectWarmupScanner(oopdi, new BrokenClasspathScanner());
 
             awaitTerminalStatus(oopdi::getWarmupStatus);
 
@@ -82,7 +85,8 @@ class TestBackgroundWarmup {
     @Test
     void testWarmupLenientModeFallsBackOnJobLevelFailure() {
         try (var ignored = TestSystemProperties.withProperties(Map.of(MetadataMode.SYSTEM_PROPERTY, "WARMUP_LENIENT"))) {
-            OOPDI<ClassA> oopdi = new OOPDI<>(ClassA.class, new BrokenClasspathScanner());
+            OOPDI<ClassA> oopdi = new OOPDI<>(ClassA.class);
+            injectWarmupScanner(oopdi, new BrokenClasspathScanner());
 
             awaitTerminalStatus(oopdi::getWarmupStatus);
 
@@ -108,6 +112,22 @@ class TestBackgroundWarmup {
             }
         } while (System.nanoTime() < deadlineNanos);
         throw new AssertionError("Warmup did not reach a terminal status within timeout, last status=" + status);
+    }
+
+    /**
+     * Test-only injection of the warmup scanner: must run before the first call that
+     * triggers {@code getMetadataWarmup()} (i.e. before {@code getWarmupStatus()},
+     * {@code getInstance()} or {@code validate()}), otherwise the lazy getter has
+     * already cached the default scanner and the injection has no effect.
+     */
+    private static void injectWarmupScanner(OOPDI<?> oopdi, ClasspathScanner scanner) {
+        try {
+            var field = OOPDI.class.getDeclaredField("warmupScanner");
+            field.setAccessible(true);
+            field.set(oopdi, scanner);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("Cannot inject warmupScanner for test", e);
+        }
     }
 
     private static final class BrokenClasspathScanner extends ClasspathScanner {

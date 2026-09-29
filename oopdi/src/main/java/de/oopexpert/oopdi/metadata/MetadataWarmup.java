@@ -24,6 +24,10 @@ import de.oopexpert.oopdi.annotation.Injectable;
  * failure surfaces later, synchronously, only if and when it is actually requested. Only a
  * failure of the classpath scan itself (the job as a whole, e.g. an unreadable classpath entry)
  * is reflected by {@link WarmupStatus#FAILED} and {@link #getFailureCause()}.</p>
+ *
+ * <p>For warmup-disabled modes ({@code DISABLED}/{@code METADATA_ONLY}) use the shared null
+ * object {@link #disabled()}: it permanently reports {@link WarmupStatus#NOT_STARTED} and
+ * ignores {@link #start()}, so callers never need a {@code null} branch.</p>
  */
 public class MetadataWarmup {
 
@@ -32,6 +36,7 @@ public class MetadataWarmup {
 	private final ClasspathScanner scanner;
 	private final InjectableFilter filter;
 	private final MetadataRepository metadataRepository;
+	private final boolean disabled;
 
 	private final AtomicReference<WarmupStatus> status = new AtomicReference<>(WarmupStatus.NOT_STARTED);
 	private final AtomicReference<Throwable> failureCause = new AtomicReference<>();
@@ -43,13 +48,38 @@ public class MetadataWarmup {
 		if (!Objects.requireNonNull(mode, "mode must not be null").isWarmupEnabled()) {
 			throw new IllegalArgumentException("MetadataWarmup requires a warmup-enabled MetadataMode, got %s.".formatted(mode));
 		}
+		this.disabled = false;
+	}
+
+	private MetadataWarmup() {
+		this.scanner = null;
+		this.filter = null;
+		this.metadataRepository = null;
+		this.disabled = true;
+	}
+
+	/**
+	 * Shared null object for warmup-disabled modes: stateless and immutable, hence safe to
+	 * share across containers. Permanently reports {@link WarmupStatus#NOT_STARTED};
+	 * {@link #start()} is a no-op and {@link #getFailureCause()} is always empty.
+	 */
+	public static MetadataWarmup disabled() {
+		return DisabledHolder.INSTANCE;
+	}
+
+	private static final class DisabledHolder {
+		private static final MetadataWarmup INSTANCE = new MetadataWarmup();
 	}
 
 	/**
 	 * Starts the background scan on a daemon thread. May only be called once per instance; a
-	 * second call fails fast instead of launching a duplicate scan.
+	 * second call fails fast instead of launching a duplicate scan. No-op on the
+	 * {@link #disabled()} null object.
 	 */
 	public void start() {
+		if (disabled) {
+			return;
+		}
 		if (!status.compareAndSet(WarmupStatus.NOT_STARTED, WarmupStatus.RUNNING)) {
 			throw new IllegalStateException("MetadataWarmup has already been started (status: %s).".formatted(status.get()));
 		}
@@ -89,10 +119,16 @@ public class MetadataWarmup {
 	}
 
 	public WarmupStatus getStatus() {
+		if (disabled) {
+			return WarmupStatus.NOT_STARTED;
+		}
 		return status.get();
 	}
 
 	public Optional<Throwable> getFailureCause() {
+		if (disabled) {
+			return Optional.empty();
+		}
 		return Optional.ofNullable(failureCause.get());
 	}
 }

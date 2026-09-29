@@ -22,13 +22,17 @@ public class OOPDI<T> implements AutoCloseable {
 			+ "/ /_/ / / /_/ / / ____/ / /_/ / _/ /\n"
 			+ "\\____/  \\____/ /_/     /_____/ /___/\n";
 
-	private final ScopedInstances scopedInstances;
 	private final Class<T> rootClazz;
-	private final ProxyManager proxyManager;
-	private final ClassesResolver classesResolver;
-	private final MetadataRepository metadataRepository;
-	private final MetadataMode metadataMode;
-	private final MetadataWarmup metadataWarmup;
+	private final String[] profiles;
+
+	private ClasspathScanner warmupScanner;
+	private RequestScopeManager requestScopeManager;
+	private ScopedInstances scopedInstances;
+	private MetadataMode metadataMode;
+	private MetadataRepository metadataRepository;
+	private ProxyManager proxyManager;
+	private ClassesResolver classesResolver;
+	private MetadataWarmup metadataWarmup;
 
 	private volatile Context<T> context;
 
@@ -42,35 +46,86 @@ public class OOPDI<T> implements AutoCloseable {
 	private volatile boolean shutdownRequested;
 
 	public OOPDI(Class<T> rootClazz, String... profiles) {
-		this(rootClazz, new ClasspathScanner(), profiles);
-	}
-
-	/**
-	 * Package-private test seam: allows tests to inject a (possibly failure-simulating)
-	 * {@link ClasspathScanner} for the background metadata warmup, without exposing that as
-	 * public API.
-	 */
-	OOPDI(Class<T> rootClazz, ClasspathScanner warmupScanner, String... profiles) {
 		this.rootClazz = Objects.requireNonNull(rootClazz, "rootClazz must not be null");
-		// One RequestScopeManager per container, shared by the interception path (ProxyManager)
-		// and the instance-selection path (ScopedInstances): REQUEST-scoped state must never
-		// leak across container boundaries on the same thread.
-		RequestScopeManager requestScopeManager = new RequestScopeManager();
-		this.scopedInstances = new ScopedInstances(requestScopeManager);
-		this.metadataMode = MetadataMode.fromSystemProperty();
-		this.metadataRepository = new MetadataRepository(metadataMode);
-		this.proxyManager = new ProxyManager(requestScopeManager, metadataRepository);
-		this.classesResolver = new ClassesResolver(profiles);
-
-		if (metadataMode.isWarmupEnabled()) {
-			this.metadataWarmup = new MetadataWarmup(warmupScanner, new InjectableFilter(profiles), metadataRepository, metadataMode);
-			this.metadataWarmup.start();
-		} else {
-			this.metadataWarmup = null;
-		}
+		this.profiles = Objects.requireNonNull(profiles, "profiles must not be null").clone();
 		// Startup banner goes to stdout (not the logger): an SLF4J backend is optional, so a
 		// logger call could vanish silently for consumers without one.
 		System.out.println(BANNER);
+	}
+
+	// Lazy, hierarchical component getters: each level only builds on the getters below it,
+	// so the construction order mirrors the dependency hierarchy. All are synchronized on
+	// this (reentrant), hence thread-safe and started at most once. Called from the
+	// synchronized getContext()/shutdown() paths as well as the unsynchronized
+	// getWarmupStatus().
+
+	// One RequestScopeManager per container, shared by the interception path (ProxyManager)
+	// and the instance-selection path (ScopedInstances): REQUEST-scoped state must never
+	// leak across container boundaries on the same thread.
+	private synchronized RequestScopeManager getRequestScopeManager() {
+		if (requestScopeManager == null) {
+			requestScopeManager = new RequestScopeManager();
+		}
+		return requestScopeManager;
+	}
+
+	private synchronized MetadataMode getMetadataMode() {
+		if (metadataMode == null) {
+			metadataMode = MetadataMode.fromSystemProperty();
+		}
+		return metadataMode;
+	}
+
+	private synchronized MetadataRepository getMetadataRepository() {
+		if (metadataRepository == null) {
+			metadataRepository = new MetadataRepository(getMetadataMode());
+		}
+		return metadataRepository;
+	}
+
+	private synchronized ScopedInstances getScopedInstances() {
+		if (scopedInstances == null) {
+			scopedInstances = new ScopedInstances(getRequestScopeManager());
+		}
+		return scopedInstances;
+	}
+
+	private synchronized ProxyManager getProxyManager() {
+		if (proxyManager == null) {
+			proxyManager = new ProxyManager(getRequestScopeManager(), getMetadataRepository());
+		}
+		return proxyManager;
+	}
+
+	private synchronized ClassesResolver getClassesResolver() {
+		if (classesResolver == null) {
+			classesResolver = new ClassesResolver(profiles.clone());
+		}
+		return classesResolver;
+	}
+
+	private synchronized ClasspathScanner getWarmupScanner() {
+		if (warmupScanner == null) {
+			warmupScanner = new ClasspathScanner();
+		}
+		return warmupScanner;
+	}
+
+	/**
+	 * Never returns {@code null}: for warmup-disabled modes the shared
+	 * {@link MetadataWarmup#disabled()} null object is cached and returned, so callers
+	 * need no {@code null} branch. A {@code null} field means "not initialized yet" only.
+	 */
+	private synchronized MetadataWarmup getMetadataWarmup() {
+		if (metadataWarmup == null) {
+			if (!getMetadataMode().isWarmupEnabled()) {
+				metadataWarmup = MetadataWarmup.disabled();
+			} else {
+				metadataWarmup = new MetadataWarmup(getWarmupScanner(), new InjectableFilter(profiles.clone()), getMetadataRepository(), getMetadataMode());
+				metadataWarmup.start();
+			}
+		}
+		return metadataWarmup;
 	}
 
 	synchronized Context<T> getContext() {
@@ -79,15 +134,16 @@ public class OOPDI<T> implements AutoCloseable {
 			if (shutdownRequested) {
 				throw new ContainerShutdown("Container has been shut down before its first use; no beans can be created.");
 			}
-			this.context = new Context<>(this, rootClazz, scopedInstances, proxyManager, classesResolver, metadataRepository);
+			this.context = new Context<>(this, rootClazz, getScopedInstances(), getProxyManager(), getClassesResolver(), getMetadataRepository());
 		}
 		return this.context;
 	}
 
 	private void checkWarmupNotFailedFast() {
-		if (metadataWarmup != null && metadataMode.isFailFast() && metadataWarmup.getStatus() == WarmupStatus.FAILED) {
+		MetadataWarmup warmup = getMetadataWarmup();
+		if (warmup.getStatus() == WarmupStatus.FAILED && getMetadataMode().isFailFast()) {
 			throw new WarmupFailed("Background metadata warmup failed (classpath scan for @Injectable classes); switch to MetadataMode.WARMUP_LENIENT to keep operating via the on-demand fallback instead.",
-					metadataWarmup.getFailureCause().orElse(null));
+					warmup.getFailureCause().orElse(null));
 		}
 	}
 
@@ -96,7 +152,7 @@ public class OOPDI<T> implements AutoCloseable {
 	 * {@link MetadataMode#isWarmupEnabled()} is {@code false} for the configured mode.
 	 */
 	public WarmupStatus getWarmupStatus() {
-		return metadataWarmup != null ? metadataWarmup.getStatus() : WarmupStatus.NOT_STARTED;
+		return getMetadataWarmup().getStatus();
 	}
 
 	/**
