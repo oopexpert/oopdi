@@ -48,6 +48,7 @@ public class WarmupBenchmark {
 	@Benchmark
 	public void timeUntilWarmupReady(Blackhole blackhole) throws InterruptedException {
 		OOPDI<ClassB1> oopdi = new OOPDI<>(ClassB1.class);
+		oopdi.startup();
 		long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
 		while (oopdi.getWarmupStatus() == WarmupStatus.RUNNING
 				|| oopdi.getWarmupStatus() == WarmupStatus.NOT_STARTED) {
@@ -62,6 +63,7 @@ public class WarmupBenchmark {
 	@Benchmark
 	public void firstResolutionAfterWarmup(Blackhole blackhole) throws InterruptedException {
 		OOPDI<ClassB1> oopdi = new OOPDI<>(ClassB1.class);
+		oopdi.startup();
 		long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
 		while (oopdi.getWarmupStatus() != WarmupStatus.READY) {
 			if (System.nanoTime() > deadline) {

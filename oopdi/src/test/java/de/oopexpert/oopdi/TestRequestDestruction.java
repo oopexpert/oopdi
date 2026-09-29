@@ -21,6 +21,7 @@ class TestRequestDestruction {
     @Test
     void testRequestBeanDestroyedExactlyOnceAtChainEnd() {
         OOPDI<ClassRequestPreDestroy> oopdi = new OOPDI<>(ClassRequestPreDestroy.class);
+        oopdi.startup();
         ClassRequestPreDestroy proxy = oopdi.getInstance(ClassRequestPreDestroy.class);
         ClassRequestPreDestroy.reset();
 
@@ -44,6 +45,7 @@ class TestRequestDestruction {
     @Test
     void testNestedChainsShareStateAndDestroyOnceAtOutermostEnd() {
         OOPDI<ClassRequestPreDestroy> oopdi = new OOPDI<>(ClassRequestPreDestroy.class);
+        oopdi.startup();
         ClassRequestPreDestroy outer = oopdi.getInstance(ClassRequestPreDestroy.class);
         ClassRequestPreDestroy inner = oopdi.getInstance(ClassRequestPreDestroy.class);
         ClassRequestPreDestroy.reset();
@@ -65,6 +67,7 @@ class TestRequestDestruction {
     @Test
     void testFailingRequestPreDestroyIsAggregatedButDestroysTheRest() {
         OOPDI<ClassRequestPreDestroy> oopdi = new OOPDI<>(ClassRequestPreDestroy.class);
+        oopdi.startup();
         ClassRequestPreDestroy good = oopdi.getInstance(ClassRequestPreDestroy.class);
         ClassRequestFailingPreDestroy bad = oopdi.getInstance(ClassRequestFailingPreDestroy.class);
         ClassRequestPreDestroy.reset();
@@ -85,6 +88,7 @@ class TestRequestDestruction {
     @Test
     void testFailingRequestPreDestroyDoesNotHideMainCallFailure() throws Exception {
         OOPDI<ClassRequestPreDestroy> oopdi = new OOPDI<>(ClassRequestPreDestroy.class);
+        oopdi.startup();
         ClassRequestPreDestroy good = oopdi.getInstance(ClassRequestPreDestroy.class);
         ClassRequestFailingPreDestroy bad = oopdi.getInstance(ClassRequestFailingPreDestroy.class);
         ClassRequestPreDestroy.reset();
@@ -108,6 +112,7 @@ class TestRequestDestruction {
     @Test
     void testNextChainStartsFreshAfterDestruction() {
         OOPDI<ClassRequestPreDestroy> oopdi = new OOPDI<>(ClassRequestPreDestroy.class);
+        oopdi.startup();
         ClassRequestPreDestroy proxy = oopdi.getInstance(ClassRequestPreDestroy.class);
         ClassRequestPreDestroy.reset();
 

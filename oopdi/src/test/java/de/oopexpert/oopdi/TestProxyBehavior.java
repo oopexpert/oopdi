@@ -13,6 +13,7 @@ class TestProxyBehavior {
     void testProxyMethodReturnValuePassesThrough() {
 
         OOPDI<ClassProxyReturnTarget> oopdi = new OOPDI<>(ClassProxyReturnTarget.class);
+        oopdi.startup();
 
         ClassProxyReturnTarget target = oopdi.getInstance(ClassProxyReturnTarget.class);
 
@@ -25,6 +26,7 @@ class TestProxyBehavior {
     void testProxyMethodExceptionPreservesCause() {
 
         OOPDI<ClassProxyExceptionTarget> oopdi = new OOPDI<>(ClassProxyExceptionTarget.class);
+        oopdi.startup();
 
         ClassProxyExceptionTarget target = oopdi.getInstance(ClassProxyExceptionTarget.class);
 
@@ -42,7 +44,9 @@ class TestProxyBehavior {
     void testProxyClassSharedAcrossContainers() {
 
         OOPDI<ClassA> oopdiOne = new OOPDI<>(ClassA.class);
+        oopdiOne.startup();
         OOPDI<ClassA> oopdiTwo = new OOPDI<>(ClassA.class);
+        oopdiTwo.startup();
 
         ClassA one = oopdiOne.getInstance(ClassA.class);
         ClassA two = oopdiTwo.getInstance(ClassA.class);
@@ -56,7 +60,9 @@ class TestProxyBehavior {
     void testSharedProxyClassStillResolvesThroughOwningContainer() {
 
         OOPDI<ClassA> oopdiOne = new OOPDI<>(ClassA.class);
+        oopdiOne.startup();
         OOPDI<ClassA> oopdiTwo = new OOPDI<>(ClassA.class);
+        oopdiTwo.startup();
 
         ClassA one = oopdiOne.getInstance(ClassA.class);
         ClassA two = oopdiTwo.getInstance(ClassA.class);

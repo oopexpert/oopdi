@@ -28,11 +28,11 @@ public class InstanceFactory {
 	private final ClassesResolver classesResolver;
 	private final OOPDI<?> oopdi;
 	private final MetadataRepository metadataRepository;
-	private final Supplier<ShutdownStatus> shutdownState;
+	private final Supplier<ContainerStatus> shutdownState;
 	private final Consumer<Object> immediateDestroyer;
 
 	public InstanceFactory(DependencyResolutionContext context, ClassesResolver classesResolver, OOPDI<?> oopdi, MetadataRepository metadataRepository,
-			Supplier<ShutdownStatus> shutdownState, Consumer<Object> immediateDestroyer) {
+			Supplier<ContainerStatus> shutdownState, Consumer<Object> immediateDestroyer) {
 		this.context = Objects.requireNonNull(context, "context must not be null");
 		this.classesResolver = Objects.requireNonNull(classesResolver, "classesResolver must not be null");
 		this.metadataRepository = Objects.requireNonNull(metadataRepository, "metadataRepository must not be null");
@@ -61,7 +61,7 @@ public class InstanceFactory {
 			synchronized (scopedMap.getLockFor(c)) {
 				if (!scopedMap.instanceExists(c)) {
 					instance = createInstance(c, scopedMap, directConstructionPhase);
-					if (shutdownState.get() != ShutdownStatus.ACTIVE) {
+					if (shutdownState.get() != ContainerStatus.ACTIVE) {
 						// Lost the race against shutdown: this chain passed the entry guard
 						// before shutdown began but finished after. Never cache it (the
 						// shutdown drain may already have taken its final snapshot) — destroy

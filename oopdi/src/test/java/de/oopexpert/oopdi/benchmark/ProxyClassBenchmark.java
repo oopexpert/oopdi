@@ -42,6 +42,7 @@ public class ProxyClassBenchmark {
 	public void setup() {
 		// Warms the shared proxy-class cache so steady-state measurements exclude generation.
 		warmContainer = new OOPDI<>(ClassProxyReturnTarget.class);
+		warmContainer.startup();
 		warmProxy = warmContainer.getInstance(ClassProxyReturnTarget.class);
 		warmProxy.add(1, 2);
 	}
@@ -49,12 +50,14 @@ public class ProxyClassBenchmark {
 	@Benchmark
 	public void newContainerWithSharedProxyClass(Blackhole blackhole) {
 		OOPDI<ClassProxyReturnTarget> oopdi = new OOPDI<>(ClassProxyReturnTarget.class);
+		oopdi.startup();
 		blackhole.consume(oopdi.getInstance(ClassProxyReturnTarget.class));
 	}
 
 	@Benchmark
 	public void firstMethodCallResolvesRealObject(Blackhole blackhole) {
 		OOPDI<ClassProxyReturnTarget> oopdi = new OOPDI<>(ClassProxyReturnTarget.class);
+		oopdi.startup();
 		blackhole.consume(oopdi.getInstance(ClassProxyReturnTarget.class).add(4, 5));
 	}
 

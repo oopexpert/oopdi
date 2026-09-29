@@ -2,6 +2,7 @@ package de.oopexpert.oopdi;
 
 import java.util.Objects;
 
+import de.oopexpert.oopdi.exception.ContainerNotStarted;
 import de.oopexpert.oopdi.exception.ContainerShutdown;
 import de.oopexpert.oopdi.exception.WarmupFailed;
 import de.oopexpert.oopdi.metadata.MetadataMode;
@@ -34,20 +35,18 @@ public class OOPDI<T> implements AutoCloseable {
 	private ClassesResolver classesResolver;
 	private MetadataWarmup metadataWarmup;
 
-	private volatile Context<T> context;
-
 	/**
-	 * Remembers a shutdown request that arrived before any {@code Context} existed. Without
-	 * this, {@link #shutdown()} on a never-used container would silently do nothing and a
-	 * later {@link #getInstance(Class)} would serve beans from a container that was already
-	 * shut down. Volatile for safe publication; only ever written inside the synchronized
-	 * {@link #shutdown()} and read inside the synchronized {@link #getContext()}.
+	 * Never {@code null}: holds the {@link UninitializedContext} null object until
+	 * {@link #startup(boolean)} replaces it with the real {@code Context}. Callers probe
+	 * lifecycle state polymorphically (never {@code null}). Volatile for safe publication;
+	 * only ever written inside the synchronized {@link #startup(boolean)}.
 	 */
-	private volatile boolean shutdownRequested;
+	private volatile Context<T> context;
 
 	public OOPDI(Class<T> rootClazz, String... profiles) {
 		this.rootClazz = Objects.requireNonNull(rootClazz, "rootClazz must not be null");
 		this.profiles = Objects.requireNonNull(profiles, "profiles must not be null").clone();
+		this.context = UninitializedContext.instance();
 		// Startup banner goes to stdout (not the logger): an SLF4J backend is optional, so a
 		// logger call could vanish silently for consumers without one.
 		System.out.println(BANNER);
@@ -56,7 +55,7 @@ public class OOPDI<T> implements AutoCloseable {
 	// Lazy, hierarchical component getters: each level only builds on the getters below it,
 	// so the construction order mirrors the dependency hierarchy. All are synchronized on
 	// this (reentrant), hence thread-safe and started at most once. Called from the
-	// synchronized getContext()/shutdown() paths as well as the unsynchronized
+	// synchronized startup()/getContext()/shutdown() paths as well as the unsynchronized
 	// getWarmupStatus().
 
 	// One RequestScopeManager per container, shared by the interception path (ProxyManager)
@@ -128,14 +127,43 @@ public class OOPDI<T> implements AutoCloseable {
 		return metadataWarmup;
 	}
 
-	synchronized Context<T> getContext() {
-		checkWarmupNotFailedFast();
-		if (this.context == null) {
-			if (shutdownRequested) {
-				throw new ContainerShutdown("Container has been shut down before its first use; no beans can be created.");
+	/**
+	 * Starts the container: runs the fail-fast warmup check and creates the real
+	 * {@code Context}. Returns immediately while a background metadata warmup continues.
+	 * Idempotent — a second call on a running container is a no-op; a call after shutdown
+	 * fails fast with {@code ContainerShutdown} since a shut-down container cannot restart.
+	 */
+	public synchronized void startup() {
+		startup(false);
+	}
+
+	/**
+	 * Starts the container like {@link #startup()}, additionally blocking until startup is
+	 * finished when {@code blockUntilReady} is {@code true}: "finished" means the background
+	 * metadata warmup reached a terminal status ({@code READY} or {@code FAILED}), so a
+	 * failed fail-fast warmup surfaces as {@code WarmupFailed} from this call. Returns
+	 * immediately when no warmup is enabled.
+	 */
+	public synchronized void startup(boolean blockUntilReady) {
+		if (!this.context.isUninitialized()) {
+			if (this.context.getStatus() != ContainerStatus.ACTIVE) {
+				throw new ContainerShutdown("Container has been shut down; it cannot be restarted.");
 			}
-			this.context = new Context<>(this, rootClazz, getScopedInstances(), getProxyManager(), getClassesResolver(), getMetadataRepository());
+			return;
 		}
+		MetadataWarmup warmup = getMetadataWarmup();
+		if (blockUntilReady) {
+			warmup.awaitCompletion();
+		}
+		checkWarmupNotFailedFast();
+		this.context = new Context<>(this, rootClazz, getScopedInstances(), getProxyManager(), getClassesResolver(), getMetadataRepository());
+	}
+
+	synchronized Context<T> getContext() {
+		if (this.context.isUninitialized()) {
+			throw new ContainerNotStarted("Container has not been started; call startup() before requesting beans.");
+		}
+		checkWarmupNotFailedFast();
 		return this.context;
 	}
 
@@ -156,17 +184,15 @@ public class OOPDI<T> implements AutoCloseable {
 	}
 
 	/**
-	 * Status of the container shutdown, mirroring {@link #getWarmupStatus()}. Always
-	 * {@link ShutdownStatus#ACTIVE} until {@link #shutdown()} is called; afterwards one of the
-	 * terminal states (or {@link ShutdownStatus#SHUTTING_DOWN} while it is in progress). A
-	 * shutdown requested before first use (no {@code Context} exists yet) reports
-	 * {@link ShutdownStatus#SHUTDOWN} — there is nothing to destroy.
+	 * Status of the container lifecycle, mirroring {@link #getWarmupStatus()}.
+	 * {@link ContainerStatus#NOT_STARTED} until {@link #startup(boolean)} is called; then
+	 * {@link ContainerStatus#ACTIVE} until {@link #shutdown()} runs (one of the terminal
+	 * states afterwards, or {@link ContainerStatus#SHUTTING_DOWN} while in progress). A
+	 * shutdown before startup is neutral — there is nothing to destroy, so the status stays
+	 * {@code NOT_STARTED}.
 	 */
-	public ShutdownStatus getShutdownStatus() {
-		if (this.context != null) {
-			return this.context.getShutdownStatus();
-		}
-		return shutdownRequested ? ShutdownStatus.SHUTDOWN : ShutdownStatus.ACTIVE;
+	public ContainerStatus getStatus() {
+		return this.context.getStatus();
 	}
 
 	public <X> X getInstance(Class<X> clazz) {
@@ -185,11 +211,13 @@ public class OOPDI<T> implements AutoCloseable {
 		getContext().validateGraph(rootClazz);
 	}
 
+	/**
+	 * Shuts the container down (idempotent; a second call is a no-op returning the terminal
+	 * status). Neutral before {@link #startup(boolean)}: with nothing to destroy it does
+	 * nothing and a later {@code startup()} still works.
+	 */
 	public synchronized void shutdown() {
-		shutdownRequested = true;
-		if (this.context != null) {
-			this.context.shutdown();
-		}
+		this.context.shutdown();
 	}
 
 	@Override

@@ -1,11 +1,14 @@
 package de.oopexpert.oopdi;
 
 /**
- * Runtime status of the container shutdown (see {@code Context.shutdown()}), mirroring the
- * {@code metadata.WarmupStatus} pattern: a fixed lifecycle choice would not help here, so this is
- * an observed value that changes over time as shutdown progresses.
+ * Runtime status of the container lifecycle (see {@link OOPDI#startup(boolean)} and
+ * {@code Context.shutdown()}), mirroring the {@code metadata.WarmupStatus} pattern: a fixed
+ * lifecycle choice would not help here, so this is an observed value that changes over time
+ * as the container moves from startup through shutdown.
  *
  * <ul>
+ *   <li>{@link #NOT_STARTED} — {@code startup()} has not been called yet; bean access fails
+ *       fast, {@code shutdown()} is a neutral no-op.</li>
  *   <li>{@link #ACTIVE} — the container serves requests normally.</li>
  *   <li>{@link #SHUTTING_DOWN} — shutdown has started; no new bean creation is accepted anymore
  *       (requests fail fast), in-flight creations are drained.</li>
@@ -16,8 +19,9 @@ package de.oopexpert.oopdi;
  *       individual failures are aggregated as suppressed exceptions on the thrown error.</li>
  * </ul>
  */
-public enum ShutdownStatus {
+public enum ContainerStatus {
 
+	NOT_STARTED,
 	ACTIVE,
 	SHUTTING_DOWN,
 	SHUTDOWN,

@@ -20,6 +20,7 @@ class TestVariableInjection {
     void testInjectSystemEnvironmentVariable() {
 
         OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
+        oopdi.startup();
 
         String EXPECTED = "jdbc://mysql:userdb";
 
@@ -33,6 +34,7 @@ class TestVariableInjection {
     void testInjectParameterVariable() {
 
         OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
+        oopdi.startup();
 
         String EXPECTED = "dbUser1";
 
@@ -46,6 +48,7 @@ class TestVariableInjection {
     void testCommonTypeConversionToInt() {
 
         OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
+        oopdi.startup();
 
         int EXPECTED = 4;
 
@@ -59,6 +62,7 @@ class TestVariableInjection {
     void testInjectVariableMissingKeyThrowsDescriptiveError() {
 
         OOPDI<ClassMissingVar> oopdi = new OOPDI<>(ClassMissingVar.class);
+        oopdi.startup();
 
         ClassMissingVar instance = oopdi.getInstance(ClassMissingVar.class);
 
@@ -75,6 +79,7 @@ class TestVariableInjection {
     void testInjectVariableOptionalYieldsNull() {
 
         OOPDI<ClassOptionalVar> oopdi = new OOPDI<>(ClassOptionalVar.class);
+        oopdi.startup();
 
         ClassOptionalVar instance = oopdi.getInstance(ClassOptionalVar.class);
 
@@ -87,6 +92,7 @@ class TestVariableInjection {
     void testInjectVariableOptionalPrimitiveFailsDescriptively() {
 
         OOPDI<ClassOptionalPrimitiveVar> oopdi = new OOPDI<>(ClassOptionalPrimitiveVar.class);
+        oopdi.startup();
 
         CannotInject ex = Assertions.assertThrows(CannotInject.class,
             () -> oopdi.getInstance(ClassOptionalPrimitiveVar.class).getOptionalInt(),
@@ -103,6 +109,7 @@ class TestVariableInjection {
     void testInjectVariableDefaultValueUsedWhenKeyMissing() {
 
         OOPDI<ClassOptionalVar> oopdi = new OOPDI<>(ClassOptionalVar.class);
+        oopdi.startup();
 
         ClassOptionalVar instance = oopdi.getInstance(ClassOptionalVar.class);
 
@@ -115,6 +122,7 @@ class TestVariableInjection {
     void testInjectVariableDefaultValueParsedForPrimitive() {
 
         OOPDI<ClassOptionalVar> oopdi = new OOPDI<>(ClassOptionalVar.class);
+        oopdi.startup();
 
         ClassOptionalVar instance = oopdi.getInstance(ClassOptionalVar.class);
 
@@ -143,6 +151,7 @@ class TestVariableInjection {
             Map.entry("matrix.char.boxed", "y")
         ))) {
             OOPDI<ClassVariableMatrix> oopdi = new OOPDI<>(ClassVariableMatrix.class);
+            oopdi.startup();
             ClassVariableMatrix instance = oopdi.getInstance(ClassVariableMatrix.class);
 
             Assertions.assertEquals(9000000000L, instance.getLongValue());
@@ -170,6 +179,7 @@ class TestVariableInjection {
             "matrix.invalid.int", "notANumber"
         ))) {
             OOPDI<ClassVariableInvalidFormat> oopdi = new OOPDI<>(ClassVariableInvalidFormat.class);
+            oopdi.startup();
             ClassVariableInvalidFormat instance = oopdi.getInstance(ClassVariableInvalidFormat.class);
 
             RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::getInvalidInt,

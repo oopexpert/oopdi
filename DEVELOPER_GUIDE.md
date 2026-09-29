@@ -9,7 +9,7 @@ und garantiert das aktuelle Verhalten widerspiegeln.
 
 1. [Grundkonzept](#1-grundkonzept)
 2. [Ein Bean registrieren: `@Injectable`](#2-ein-bean-registrieren-injectable)
-3. [Bean auflösen: `OOPDI.getInstance`](#3-bean-auflösen-oopdigetinstance)
+3. [Container starten, Bean auflösen: `OOPDI.startup`/`getInstance`](#3-container-starten-bean-auflösen-oopdistartupgetinstance)
 4. [Scopes](#4-scopes)
 5. [Feld-Injection: `@InjectInstance`](#5-feld-injection-injectinstance)
 6. [Mengen-Injection: `@InjectSet` und Profile](#6-mengen-injection-injectset-und-profile)
@@ -37,11 +37,12 @@ Grenze für Hot-Redeploy-Umgebungen).
 
 ```java
 OOPDI<ClassRoot> oopdi = new OOPDI<>(ClassRoot.class);
+oopdi.startup();
 ClassRoot root = oopdi.getInstance(ClassRoot.class); // root ist ein Proxy, kein "nacktes" ClassRoot
 ```
 
 Wichtige Klassen: `OOPDI` (Einstiegspunkt, besitzt die einzige `MetadataRepository`-Instanz),
-`Context` (erzeugt/injiziert/verwaltet Beans, besitzt die `ShutdownStatus`-State-Machine),
+`Context` (erzeugt/injiziert/verwaltet Beans, besitzt die `ContainerStatus`-State-Machine),
 `ProxyManager` (Byte-Buddy-Proxys; ein `RequestScopeManager` pro Container),
 `metadata.MetadataRepository`/`ClassMetadata` (einzige Quelle für Konstruktor, Feld-Injektionspunkte,
 Lifecycle-Methoden; Verhalten gesteuert per `MetadataMode`),
@@ -63,7 +64,7 @@ wirft die Auflösung eine Exception. Wichtige Attribute:
 | Attribut | Standard | Bedeutung |
 |----------|----------|-----------|
 | `scope`  | `GLOBAL` | siehe [Scopes](#4-scopes) |
-| `immediate` | `false` | Bean wird sofort beim Container-Start erzeugt statt lazy |
+| `immediate` | `false` | Bean wird sofort bei der Auflösung erzeugt statt erst beim ersten Methodenaufruf |
 | `profiles` | `{}` | Klasse ist nur aktiv, wenn eines der Profile aktiv ist |
 
 ```java
@@ -85,18 +86,27 @@ Klassen, die danach herausgefiltert werden (Profil-Mismatch, abstrakt), führen 
 Initialisierer aus
 (`TestSecurityValidation.testInjectSetClasspathScanDoesNotInitializeProfileFilteredCandidate`).
 
-## 3. Bean auflösen: `OOPDI.getInstance`
+## 3. Container starten, Bean auflösen: `OOPDI.startup`/`getInstance`
 
 ```java
 OOPDI<ClassRoot> oopdi = new OOPDI<>(ClassRoot.class);
+oopdi.startup(); // explizit: ohne Start wirft jeder Zugriff ContainerNotStarted
 ClassA instance = oopdi.getInstance(ClassA.class);
 ```
+
+Start und Shutdown sind symmetrisch: `startup()` legt den `Context` an (idempotent —
+ein zweiter Aufruf auf laufendem Container ist ein No-Op, nach Shutdown wirft er
+`ContainerShutdown`), `shutdown()` baut ab. `startup(true)` blockiert zusätzlich, bis ein
+Hintergrund-Warmup terminal ist (`READY`/`FAILED`); `startup()` ohne Argument kehrt sofort
+zurück. Ein `shutdown()` vor dem Start ist neutral (No-Op) — ein späteres `startup()` funktioniert
+trotzdem.
 
 Ein `OOPDI`-Container kapselt genau einen `Context`. Für **Profile** wird der Konstruktor mit
 Varargs verwendet:
 
 ```java
 OOPDI<ClassRoot> oopdi = new OOPDI<>(ClassRoot.class, "profile1");
+oopdi.startup();
 ```
 
 `OOPDI`-Container sind vollständig voneinander isoliert — das gilt für **alle** Scopes, nicht
@@ -105,7 +115,9 @@ ohnehin Aufruf-transient):
 
 ```java
 OOPDI<ClassRoot> oopdiOne = new OOPDI<>(ClassRoot.class);
+oopdiOne.startup();
 OOPDI<ClassRoot> oopdiTwo = new OOPDI<>(ClassRoot.class);
+oopdiTwo.startup();
 
 ClassA one = oopdiOne.getInstance(ClassA.class);
 ClassA two = oopdiTwo.getInstance(ClassA.class);
@@ -120,7 +132,7 @@ assertNotEquals(123, two.getI());  // kein geteilter GLOBAL-State
 auf einem Thread)
 
 Der Container ist `AutoCloseable` (`close()` ruft `shutdown()`); `getWarmupStatus()` und
-`getShutdownStatus()` machen Hintergrund-Warmup bzw. Shutdown-Zustand beobachtbar (siehe
+`getStatus()` machen Hintergrund-Warmup bzw. Lifecycle-Zustand beobachtbar (siehe
 [Lifecycle](#8-lifecycle-postconstruct--predestroy)).
 
 ## 4. Scopes
@@ -254,6 +266,7 @@ public class ClassImmediateLocalMisconfig { /* ... */ }
 
 ```java
 OOPDI<ClassImmediateLocalMisconfig> oopdi = new OOPDI<>(ClassImmediateLocalMisconfig.class);
+oopdi.startup();
 ClassImmediateLocalMisconfig instance = oopdi.getInstance(ClassImmediateLocalMisconfig.class);
 
 CannotInject ex = assertThrows(CannotInject.class, instance::ping);
@@ -334,6 +347,7 @@ und `ClassB3` (kein `@Injectable`) werden gefiltert:
 
 ```java
 OOPDI<ClassRoot> oopdi = new OOPDI<>(ClassRoot.class);
+oopdi.startup();
 Set<ClassB> classesB = oopdi.getInstance(ClassRoot.class).getClassesB();
 assertEquals(1, classesB.size());
 ```
@@ -343,6 +357,7 @@ Mit aktivem Profil kommen zusätzliche Implementierungen hinzu:
 
 ```java
 OOPDI<ClassRoot> oopdi = new OOPDI<>(ClassRoot.class, "profile1");
+oopdi.startup();
 Set<ClassB> classesB = oopdi.getInstance(ClassRoot.class).getClassesB();
 
 assertEquals(2, classesB.size()); // ClassB1 (Default) + ClassB2 (profile1)
@@ -475,6 +490,7 @@ public class ClassPostConstructChild extends ClassPostConstructBase {
 
 ```java
 OOPDI<ClassWithPreDestroy> oopdi = new OOPDI<>(ClassWithPreDestroy.class);
+oopdi.startup();
 ClassWithPreDestroy instance = oopdi.getInstance(ClassWithPreDestroy.class);
 assertFalse(instance.isDestroyed());
 
@@ -520,12 +536,13 @@ einer Hierarchie wirft `MultiplePreDestroyMethods` (Spiegel zu `MultiplePostCons
 
 ### Shutdown ist zustandsgesteuert, nicht ein Aufruf
 
-`ShutdownStatus`: `ACTIVE` → `SHUTTING_DOWN` → `SHUTDOWN`/`FAILED` (Single-Winner-CAS, idempotent,
-beobachtbar via `oopdi.getShutdownStatus()`). Ein einziger Guard am Eingang von
+`ContainerStatus`: `NOT_STARTED` → `ACTIVE` → `SHUTTING_DOWN` → `SHUTDOWN`/`FAILED`
+(Single-Winner-CAS ab Shutdown, idempotent, beobachtbar via `oopdi.getStatus()`). Vor
+`startup()` wirft jeder Bean-Zugriff fail-fast mit `ContainerNotStarted` statt implizit zu
+starten; ein `shutdown()` vor dem Start ist neutral. Ein einziger Guard am Eingang von
 `Context.getOrCreate` — dem einzigen Trichter aller Realobjekt-Erzeugung — wirft `ContainerShutdown`
 für alles, was nach Shutdown-Beginn angefragt wird (Top-Level wie verschachtelt). Bereits aufgelöste
-Beans bleiben lesbar; ein `shutdown()` vor der Erstnutzung wird gemerkt und lässt spätere
-`getInstance()`-Aufrufe fail-fast scheitern statt Beans aus einem toten Container zu liefern.
+Beans bleiben lesbar.
 
 Zerstört wird Best-Effort in Drain-Loop-Durchgängen, bis keine unzerstörten Instanzen mehr übrig
 sind (laufende Ketten lassen sich nicht abbrechen und werden von späteren Durchgängen
@@ -543,6 +560,7 @@ Aggregations-Semantik; Hauptaufruf-Fehler propagiert mit Cleanup-Fehlern als sup
 
 ```java
 OOPDI<ClassRoot> oopdi = new OOPDI<>(ClassRoot.class);
+oopdi.startup();
 oopdi.validate(); // wirft CannotInject mit allen Verdrahtungsproblemen — oder schweigt
 ```
 
@@ -652,9 +670,11 @@ Kettenende per `remove()` gelöscht statt auf `false` gesetzt.
 | Profil-gefilterte Klasse ohne aktives Profil auflösen | `NoClassesLeftAfterFiltering` | `testProfileFilteredClassCannotBeInstantiatedWhenInactive` |
 | Mehrere konkrete Klassen nach Profilfilterung | `MultipleClassesLeftAfterFiltering` | — |
 | Klassenpfad nicht lesbar (Infrastruktur, kein Filterergebnis) | `ClasspathScanFailed` | — (simuliert in `TestMetadataWarmup`) |
-| Anfrage nach Shutdown-Beginn | `ContainerShutdown` | `testGetInstanceAfterShutdownFailsFast`, `testShutdownBeforeFirstUseIsNotSilentlyLost` |
+| Anfrage nach Shutdown-Beginn | `ContainerShutdown` | `testGetInstanceAfterShutdownFailsFast` |
 | Fehlgeschlagene `@PreDestroy` (Shutdown oder Kettenende) | `DestructionFailed` mit suppressed Einzelursachen | `testFailingPreDestroyDoesNotAbortShutdownOfRemainingInstances`, `testFailingRequestPreDestroyIsAggregatedButDestroysTheRest` |
-| Warmup-Scan-Fehlschlag bei `WARMUP_FAIL_FAST` | `WarmupFailed` | `testWarmupFailFastModePropagatesJobLevelFailureOnNextGetInstance` |
+| Warmup-Scan-Fehlschlag bei `WARMUP_FAIL_FAST` | `WarmupFailed` | `testWarmupFailFastModePropagatesJobLevelFailureOnNextGetInstance`, `testWarmupFailFastModePropagatesJobLevelFailureOnBlockingStartup` |
+| Bean-Zugriff/`validate()` vor `startup()` | `ContainerNotStarted` | `testBeanAccessBeforeStartupFailsFast` |
+| `startup()` nach Shutdown | `ContainerShutdown` (kein Neustart) | `testStartupAfterShutdownFailsFast` |
 | Unbekannter `oopdi.metadata.mode`-Wert | `IllegalArgumentException` | `testInvalidValueThrows` |
 | Exception in proxied Methode | `InvocationTargetException` mit Original als `cause` | `testProxyMethodExceptionPreservesCause` |
 
@@ -673,6 +693,7 @@ try (TestSystemProperties.Scope ignored = TestSystemProperties.withProperties(Ma
         "matrix.long", "9000000000"))) {
 
     OOPDI<ClassVariableMatrix> oopdi = new OOPDI<>(ClassVariableMatrix.class);
+    oopdi.startup();
     ClassVariableMatrix instance = oopdi.getInstance(ClassVariableMatrix.class);
 
     assertEquals(9000000000L, instance.getLongValue());

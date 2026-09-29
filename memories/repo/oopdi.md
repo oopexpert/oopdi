@@ -37,9 +37,16 @@ mvn test
 - `metadata.MetadataRepository` is the single source of truth (primary constructor, field
   injection points, lifecycle methods). Mode via `oopdi.metadata.mode` (`DISABLED` default,
   `METADATA_ONLY`, `WARMUP_FAIL_FAST`, `WARMUP_LENIENT`); `OOPDI.getWarmupStatus()`.
-- Shutdown state machine (`ShutdownStatus`, single-winner CAS, idempotent): best-effort
+- Lifecycle is symmetric and strict: explicit `OOPDI.startup()` (idempotent;
+  `startup(true)` blocks on warmup completion) before any bean access, `shutdown()` to tear
+  down. Pre-start access/`validate()` throws `ContainerNotStarted` (no auto-start);
+  shutdown-before-start is a neutral no-op. `OOPDI.context` never `null`
+  (`UninitializedContext` null object, `NOT_STARTED`, neutral `shutdown()`).
+- Container state machine (`ContainerStatus`: `NOT_STARTED` → `ACTIVE` → `SHUTTING_DOWN` →
+  `SHUTDOWN`/`FAILED`, single-winner CAS, idempotent, via `OOPDI.getStatus()`): best-effort
   drain-loop destruction, `DestructionFailed` aggregation; `InstancesState.remove`
-  compensates failed post-processing; `OOPDI.shutdownRequested` covers shutdown-before-use.
+  compensates failed post-processing. `MetadataWarmup.awaitCompletion()` (CountDownLatch)
+  backs blocking startup.
 - REQUEST beans die at chain end (same best-effort semantics); LOCAL has no lifecycle end
   by design (call-transient, no `@PreDestroy` support planned).
 - `OOPDI.validate()` dry-validates the reachable bean graph (no instantiation, no side
@@ -65,10 +72,11 @@ mvn test
 - Failure taxonomy: `CannotInject` (eligibility/config), `DestructionFailed` (aggregation),
   `MultipleConstructors`/`MultiplePostConstructMethods`/`MultiplePreDestroyMethods`
   (cardinalities), `ClasspathScanFailed` (infra), `WarmupFailed`, `ContainerShutdown`,
-  `NoRequestScopeAvailable`, `UnderConstruction` (internal, surfaced as `CannotInject`).
+  `ContainerNotStarted` (pre-start access), `NoRequestScopeAvailable`,
+  `UnderConstruction` (internal, surfaced as `CannotInject`).
 - English-only user messages. No switch statements (polymorphic `Scope`).
 - API boundary: public contract is `OOPDI`, annotations, `DependencyResolutionContext`,
-  exceptions, `MetadataMode`/`ShutdownStatus`/`WarmupStatus`. Casts to internal types and
+  exceptions, `MetadataMode`/`ContainerStatus`/`WarmupStatus`. Casts to internal types and
   reflective access to internals are unsupported — developers bypassing keep their app
   consistent themselves. No JPMS enforcement planned.
 - Docs to maintain with architecture changes: `.github/copilot-instructions.md`, `AGENTS.md`,

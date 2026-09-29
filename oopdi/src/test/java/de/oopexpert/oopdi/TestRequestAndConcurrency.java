@@ -27,6 +27,7 @@ class TestRequestAndConcurrency {
         CountDownLatch constructorStartedLatch = new CountDownLatch(1);
 
         OOPDI<ClassGlobalRace> oopdi = new OOPDI<>(ClassGlobalRace.class);
+        oopdi.startup();
         ClassGlobalRace proxy = oopdi.getInstance(ClassGlobalRace.class);
 
         ClassGlobalRace.instanceCount.set(0);
@@ -52,6 +53,7 @@ class TestRequestAndConcurrency {
     void testRequestScopeNestedCallsShareSameRequestScopedState() {
 
         OOPDI<ClassRequestScenario> oopdi = new OOPDI<>(ClassRequestScenario.class);
+        oopdi.startup();
         ClassRequestScenario scenario = oopdi.getInstance(ClassRequestScenario.class);
         ClassRequestState.resetCounter();
 
@@ -68,6 +70,7 @@ class TestRequestAndConcurrency {
     void testRequestScopeExceptionCleansContextForNextCall() {
 
         OOPDI<ClassRequestScenario> oopdi = new OOPDI<>(ClassRequestScenario.class);
+        oopdi.startup();
         ClassRequestScenario scenario = oopdi.getInstance(ClassRequestScenario.class);
         ClassRequestState.resetCounter();
 
@@ -93,6 +96,7 @@ class TestRequestAndConcurrency {
     void testRequestScopeIsolatedAcrossThreads() throws InterruptedException {
 
         OOPDI<ClassRequestScenario> oopdi = new OOPDI<>(ClassRequestScenario.class);
+        oopdi.startup();
         ClassRequestScenario scenario = oopdi.getInstance(ClassRequestScenario.class);
         ClassRequestState.resetCounter();
 
@@ -118,6 +122,7 @@ class TestRequestAndConcurrency {
     void testParallelInitializationForDifferentGlobalBeans() throws InterruptedException {
 
         OOPDI<ClassParallelA> oopdi = new OOPDI<>(ClassParallelA.class);
+        oopdi.startup();
         ClassParallelA beanA = oopdi.getInstance(ClassParallelA.class);
         ClassParallelB beanB = oopdi.getInstance(ClassParallelB.class);
 
@@ -156,6 +161,7 @@ class TestRequestAndConcurrency {
         // per-class locks; resolving them concurrently must neither corrupt the cache nor
         // produce duplicate singletons, and shutdown afterwards must not fail.
         OOPDI<ClassA> oopdi = new OOPDI<>(ClassA.class);
+        oopdi.startup();
 
         java.util.concurrent.atomic.AtomicReference<Throwable> workerFailure = new java.util.concurrent.atomic.AtomicReference<>();
 

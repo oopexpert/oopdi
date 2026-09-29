@@ -3,6 +3,7 @@ package de.oopexpert.oopdi.metadata;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -40,6 +41,7 @@ public class MetadataWarmup {
 
 	private final AtomicReference<WarmupStatus> status = new AtomicReference<>(WarmupStatus.NOT_STARTED);
 	private final AtomicReference<Throwable> failureCause = new AtomicReference<>();
+	private final CountDownLatch completed = new CountDownLatch(1);
 
 	public MetadataWarmup(ClasspathScanner scanner, InjectableFilter filter, MetadataRepository metadataRepository, MetadataMode mode) {
 		this.scanner = Objects.requireNonNull(scanner, "scanner must not be null");
@@ -105,6 +107,8 @@ public class MetadataWarmup {
 			failureCause.set(e);
 			status.set(WarmupStatus.FAILED);
 			log.error("Metadata warmup failed: classpath scan for @Injectable classes threw", e);
+		} finally {
+			completed.countDown();
 		}
 	}
 
@@ -115,6 +119,27 @@ public class MetadataWarmup {
 			// Deliberately Throwable: a single unloadable candidate (including LinkageError
 			// variants beyond the scanner's own filtering) must not fail the whole job.
 			log.warn("Metadata warmup: failed to pre-inspect class '{}'; will be re-attempted synchronously on first real use", candidate.getName(), e);
+		}
+	}
+
+	/**
+	 * Blocks until the background job reached a terminal status ({@link WarmupStatus#READY} or
+	 * {@link WarmupStatus#FAILED}). Returns immediately on the {@link #disabled()} null object
+	 * and when the job already finished. Guaranteed to terminate: {@link #run()} funnels every
+	 * outcome (including {@code Throwable}) through a terminal status before counting down.
+	 *
+	 * @throws IllegalStateException if the waiting thread is interrupted; the interrupt flag
+	 *         is restored before throwing.
+	 */
+	public void awaitCompletion() {
+		if (disabled) {
+			return;
+		}
+		try {
+			completed.await();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException("Interrupted while waiting for metadata warmup completion.", e);
 		}
 	}
 

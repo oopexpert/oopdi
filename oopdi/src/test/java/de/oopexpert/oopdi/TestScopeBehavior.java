@@ -24,6 +24,7 @@ class TestScopeBehavior {
     void testScopeLocal() {
 
         OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
+        oopdi.startup();
 
         ClassB classBinstance = oopdi.getInstance(ClassB1.class);
 
@@ -38,6 +39,7 @@ class TestScopeBehavior {
     void testThreadScope() throws InterruptedException {
 
         OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
+        oopdi.startup();
 
         ClassC instance = oopdi.getInstance(ClassC.class);
 
@@ -62,6 +64,7 @@ class TestScopeBehavior {
     void testGlobalScope() throws InterruptedException {
 
         OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
+        oopdi.startup();
 
         ClassA instance = oopdi.getInstance(ClassA.class);
 
@@ -86,7 +89,9 @@ class TestScopeBehavior {
     void testGlobalScopeIsolatedAcrossDifferentContainers() {
 
         OOPDI<ClassRoot> oopdiOne = new OOPDI<>(ClassRoot.class);
+        oopdiOne.startup();
         OOPDI<ClassRoot> oopdiTwo = new OOPDI<>(ClassRoot.class);
+        oopdiTwo.startup();
 
         ClassA one = oopdiOne.getInstance(ClassA.class);
         ClassA two = oopdiTwo.getInstance(ClassA.class);
@@ -104,7 +109,9 @@ class TestScopeBehavior {
     void testRequestScopeIsolatedAcrossDifferentContainers() {
 
         OOPDI<ClassD> oopdiOne = new OOPDI<>(ClassD.class);
+        oopdiOne.startup();
         OOPDI<ClassD> oopdiTwo = new OOPDI<>(ClassD.class);
+        oopdiTwo.startup();
 
         ClassD one = oopdiOne.getInstance(ClassD.class);
         ClassD two = oopdiTwo.getInstance(ClassD.class);
@@ -133,6 +140,7 @@ class TestScopeBehavior {
         ClassGlobalRace.instanceCount.set(0);
 
         OOPDI<ClassGlobalRace> oopdi = new OOPDI<>(ClassGlobalRace.class);
+        oopdi.startup();
         ClassGlobalRace instance = oopdi.getInstance(ClassGlobalRace.class);
 
         // First method call resolves (and caches) the real object.
@@ -152,6 +160,7 @@ class TestScopeBehavior {
     void testImmediateThreadScopeMisconfigurationThrows() {
 
         OOPDI<ClassImmediateThreadMisconfig> oopdi = new OOPDI<>(ClassImmediateThreadMisconfig.class);
+        oopdi.startup();
         ClassImmediateThreadMisconfig instance = oopdi.getInstance(ClassImmediateThreadMisconfig.class);
 
         RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::ping,
@@ -164,6 +173,7 @@ class TestScopeBehavior {
     void testImmediateLocalScopeMisconfigurationThrows() {
 
         OOPDI<ClassImmediateLocalMisconfig> oopdi = new OOPDI<>(ClassImmediateLocalMisconfig.class);
+        oopdi.startup();
         ClassImmediateLocalMisconfig instance = oopdi.getInstance(ClassImmediateLocalMisconfig.class);
 
         RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::ping,
@@ -176,6 +186,7 @@ class TestScopeBehavior {
     void testImmediateRequestScopeMisconfigurationThrows() {
 
         OOPDI<ClassImmediateRequestMisconfig> oopdi = new OOPDI<>(ClassImmediateRequestMisconfig.class);
+        oopdi.startup();
         ClassImmediateRequestMisconfig instance = oopdi.getInstance(ClassImmediateRequestMisconfig.class);
 
         RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::ping,
@@ -188,6 +199,7 @@ class TestScopeBehavior {
     void testRequestScope() throws InterruptedException {
 
         OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
+        oopdi.startup();
 
         ClassD instance = oopdi.getInstance(ClassD.class);
 

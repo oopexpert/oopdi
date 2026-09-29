@@ -20,6 +20,7 @@ class TestLifecycleHooks {
     void testPostConstructInSuperclassIsInvoked() {
 
         OOPDI<ClassPostConstructChild> oopdi = new OOPDI<>(ClassPostConstructChild.class);
+        oopdi.startup();
 
         ClassPostConstructChild instance = oopdi.getInstance(ClassPostConstructChild.class);
 
@@ -32,6 +33,7 @@ class TestLifecycleHooks {
     void testPostConstructReceivesBeanAndOopdiParameters() {
 
         OOPDI<ClassPostConstructWithParameters> oopdi = new OOPDI<>(ClassPostConstructWithParameters.class);
+        oopdi.startup();
         ClassPostConstructWithParameters instance = oopdi.getInstance(ClassPostConstructWithParameters.class);
 
         Assertions.assertTrue(instance.isInitialized(), "@PostConstruct should be invoked");
@@ -46,6 +48,7 @@ class TestLifecycleHooks {
     void testPreDestroyIsInvokedOnShutdown() {
 
         OOPDI<ClassWithPreDestroy> oopdi = new OOPDI<>(ClassWithPreDestroy.class);
+        oopdi.startup();
 
         ClassWithPreDestroy instance = oopdi.getInstance(ClassWithPreDestroy.class);
         Assertions.assertFalse(instance.isDestroyed(), "should not be destroyed before shutdown");
@@ -60,6 +63,7 @@ class TestLifecycleHooks {
     void testPreDestroyInSuperclassIsInvokedOnShutdown() {
 
         OOPDI<ClassPreDestroyChild> oopdi = new OOPDI<>(ClassPreDestroyChild.class);
+        oopdi.startup();
 
         ClassPreDestroyChild instance = oopdi.getInstance(ClassPreDestroyChild.class);
         Assertions.assertFalse(instance.isBaseDestroyed(), "should not be destroyed before shutdown");
@@ -75,6 +79,7 @@ class TestLifecycleHooks {
     void testPreDestroyIsInvokedInReverseCreationOrder() {
 
         OOPDI<ClassPreDestroyOrderDependent> oopdi = new OOPDI<>(ClassPreDestroyOrderDependent.class);
+        oopdi.startup();
 
         // Resolving the dependent forces its dependency to be created first.
         oopdi.getInstance(ClassPreDestroyOrderDependent.class).ping();
@@ -94,6 +99,7 @@ class TestLifecycleHooks {
     void testMultiplePreDestroyMethodsThrowDedicatedType() {
 
         OOPDI<ClassMultiplePreDestroyChild> oopdi = new OOPDI<>(ClassMultiplePreDestroyChild.class);
+        oopdi.startup();
 
         oopdi.getInstance(ClassMultiplePreDestroyChild.class).isBaseDestroyed();
 

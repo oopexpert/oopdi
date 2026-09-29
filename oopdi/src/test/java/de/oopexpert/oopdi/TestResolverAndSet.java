@@ -20,6 +20,7 @@ class TestResolverAndSet {
     void testProxyConsistencyInSets() {
 
         OOPDI<ClassRoot> oopdi = new OOPDI<ClassRoot>(ClassRoot.class);
+        oopdi.startup();
 
         Set<ClassB> classesB = oopdi.getInstance(ClassRoot.class).getClassesB();
 
@@ -36,6 +37,7 @@ class TestResolverAndSet {
     void testInjectSetIncludesProfileSpecificImplementationsWhenProfileIsActive() {
 
         OOPDI<ClassRoot> oopdi = new OOPDI<>(ClassRoot.class, "profile1");
+        oopdi.startup();
 
         Set<ClassB> classesB = oopdi.getInstance(ClassRoot.class).getClassesB();
 
@@ -50,6 +52,7 @@ class TestResolverAndSet {
     void testInjectSetReturnsEmptySetWhenNoInjectableImplementationExists() {
 
         OOPDI<ClassSetEmptyRoot> oopdi = new OOPDI<>(ClassSetEmptyRoot.class);
+        oopdi.startup();
 
         Set<?> values = oopdi.getInstance(ClassSetEmptyRoot.class).getValues();
 
@@ -63,6 +66,7 @@ class TestResolverAndSet {
     void testProfileFilteredClassCannotBeInstantiatedWhenInactive() {
 
         OOPDI<ClassRoot> oopdi = new OOPDI<>(ClassRoot.class);
+        oopdi.startup();
 
         Assertions.assertThrows(NoClassesLeftAfterFiltering.class,
             () -> oopdi.getInstance(ClassB2.class).getI(),
@@ -78,6 +82,7 @@ class TestResolverAndSet {
         // (exact class), not a proxy (ByteBuddy subclass). Before the save/restore fix, the
         // nested chain's finally-block reset the flag and the field ended up holding a proxy.
         OOPDI<ClassNestedOuter> oopdi = new OOPDI<>(ClassNestedOuter.class);
+        oopdi.startup();
 
         ClassNestedDepB depB = oopdi.getInstance(ClassNestedOuter.class).getDepA().getDepB();
 

@@ -26,8 +26,8 @@ class TestSecurityValidation {
         OOPDI<ClassNotInjectableWithSideEffect> oopdi = new OOPDI<>(ClassNotInjectableWithSideEffect.class);
 
         RuntimeException ex = Assertions.assertThrows(RuntimeException.class,
-            () -> oopdi.getInstance(ClassNotInjectableWithSideEffect.class),
-            "Requesting a non-@Injectable class must throw before construction");
+            () -> oopdi.startup(),
+            "Starting a container with a non-@Injectable root must throw before construction");
 
         Assertions.assertTrue(ex.getMessage().contains("not annotated as 'Injectable'"));
         Assertions.assertEquals(0, ClassNotInjectableWithSideEffect.constructorCallCount.get(),
@@ -43,8 +43,8 @@ class TestSecurityValidation {
         OOPDI<ClassAbstractInjectableWithSideEffect> oopdi = new OOPDI<>(ClassAbstractInjectableWithSideEffect.class);
 
         RuntimeException ex = Assertions.assertThrows(RuntimeException.class,
-            () -> oopdi.getInstance(ClassAbstractInjectableWithSideEffect.class),
-            "Requesting an abstract class must throw before construction");
+            () -> oopdi.startup(),
+            "Starting a container with an abstract root must throw before construction");
 
         Assertions.assertTrue(ex.getMessage().contains("abstract"));
         Assertions.assertEquals(0, ClassAbstractInjectableWithSideEffect.constructorCallCount.get(),
@@ -56,6 +56,7 @@ class TestSecurityValidation {
     void testInjectSetClasspathScanDoesNotInitializeProfileFilteredCandidate() {
 
         OOPDI<ClassSetSideEffectRoot> oopdi = new OOPDI<>(ClassSetSideEffectRoot.class);
+        oopdi.startup();
 
         // No profile active, so the candidate implementation (requires
         // "profile-never-active-for-side-effect-test") must be filtered out; the classpath scan
@@ -80,8 +81,8 @@ class TestSecurityValidation {
         OOPDI<ClassMultipleConstructorsWithSideEffect> oopdi = new OOPDI<>(ClassMultipleConstructorsWithSideEffect.class);
 
         MultipleConstructors ex = Assertions.assertThrows(MultipleConstructors.class,
-            () -> oopdi.getInstance(ClassMultipleConstructorsWithSideEffect.class),
-            "Requesting a class with more than one constructor must throw MultipleConstructors before construction");
+            () -> oopdi.startup(),
+            "Starting a container with a multi-constructor root must throw MultipleConstructors before construction");
 
         Assertions.assertTrue(ex.getMessage().contains(ClassMultipleConstructorsWithSideEffect.class.getName()));
         Assertions.assertEquals(0, ClassMultipleConstructorsWithSideEffect.constructorCallCount.get(),
@@ -100,6 +101,7 @@ class TestSecurityValidation {
         // confirming injection still works correctly after that change.
 
         OOPDI<ClassFieldAccessibilityTarget> oopdi = new OOPDI<>(ClassFieldAccessibilityTarget.class);
+        oopdi.startup();
 
         ClassFieldAccessibilityTarget instance = oopdi.getInstance(ClassFieldAccessibilityTarget.class);
 

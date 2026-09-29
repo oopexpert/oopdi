@@ -41,12 +41,20 @@ public class ScopeDispatchBenchmark {
 
 	@Setup
 	public void setup() {
-		globalProxy = new OOPDI<>(ClassProxyReturnTarget.class).getInstance(ClassProxyReturnTarget.class);
+		OOPDI<ClassProxyReturnTarget> globalContainer = new OOPDI<>(ClassProxyReturnTarget.class);
+		globalContainer.startup();
+		globalProxy = globalContainer.getInstance(ClassProxyReturnTarget.class);
 		globalProxy.add(1, 2);
-		threadProxy = new OOPDI<>(ClassC.class).getInstance(ClassC.class);
+		OOPDI<ClassC> threadContainer = new OOPDI<>(ClassC.class);
+		threadContainer.startup();
+		threadProxy = threadContainer.getInstance(ClassC.class);
 		threadProxy.setI(1);
-		localProxy = new OOPDI<>(ClassB1.class).getInstance(ClassB1.class);
-		requestProxy = new OOPDI<>(ClassD.class).getInstance(ClassD.class);
+		OOPDI<ClassB1> localContainer = new OOPDI<>(ClassB1.class);
+		localContainer.startup();
+		localProxy = localContainer.getInstance(ClassB1.class);
+		OOPDI<ClassD> requestContainer = new OOPDI<>(ClassD.class);
+		requestContainer.startup();
+		requestProxy = requestContainer.getInstance(ClassD.class);
 	}
 
 	@Benchmark

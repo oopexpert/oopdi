@@ -18,9 +18,9 @@ import de.oopexpert.teststructure.ClassB1;
 
 /**
  * Baseline for cold container startup with default settings (no warmup): container creation
- * plus first proxy issuance plus first real-object resolution. Single-shot by design — steady
- * state is covered by {@link ProxyClassBenchmark}. Run manually, never part of
- * {@code mvn test}.
+ * plus explicit startup plus first proxy issuance plus first real-object resolution.
+ * Single-shot by design — steady state is covered by {@link ProxyClassBenchmark}. Run
+ * manually, never part of {@code mvn test}.
  */
 @BenchmarkMode(Mode.SingleShotTime)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
@@ -33,6 +33,7 @@ public class ContainerStartupBenchmark {
 	@Benchmark
 	public void coldStartupFirstResolution(Blackhole blackhole) {
 		OOPDI<ClassB1> oopdi = new OOPDI<>(ClassB1.class);
+		oopdi.startup();
 		blackhole.consume(oopdi.getInstance(ClassB1.class).getI());
 	}
 }

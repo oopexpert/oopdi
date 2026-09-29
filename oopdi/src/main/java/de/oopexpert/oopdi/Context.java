@@ -35,10 +35,25 @@ public class Context<T> implements InternalResolutionContext {
 
 	private final ThreadLocal<Boolean> directConstructionPhase = new ThreadLocal<>();
 
-	private final AtomicReference<ShutdownStatus> shutdownStatus = new AtomicReference<>(ShutdownStatus.ACTIVE);
+	private final AtomicReference<ContainerStatus> shutdownStatus = new AtomicReference<>(ContainerStatus.ACTIVE);
+
+	/**
+	 * Work-free construction path for the {@link UninitializedContext} null object only:
+	 * leaves every field {@code null} and performs no wiring, proxy creation or lifecycle
+	 * work. Never call directly outside the subclass.
+	 */
+	protected Context() {
+		this.scopedInstances = null;
+		this.proxyManager = null;
+		this.classesResolver = null;
+		this.resolverPipeline = null;
+		this.instanceFactory = null;
+		this.lifecycleProcessor = null;
+		this.metadataRepository = null;
+	}
 
 	public Context(OOPDI<T> oopdi, Class<T> rootClazz, ScopedInstances scopedInstances,
-			ProxyManager proxyManager, ClassesResolver classesResolver, MetadataRepository metadataRepository) {
+		ProxyManager proxyManager, ClassesResolver classesResolver, MetadataRepository metadataRepository) {
 		this.scopedInstances = Objects.requireNonNull(scopedInstances);
 		this.proxyManager = Objects.requireNonNull(proxyManager);
 		this.classesResolver = Objects.requireNonNull(classesResolver, "classesResolver must not be null");
@@ -82,9 +97,18 @@ public class Context<T> implements InternalResolutionContext {
 	 * never be destroyed again.
 	 */
 	private void checkNotShuttingDown() {
-		if (shutdownStatus.get() != ShutdownStatus.ACTIVE) {
+		if (shutdownStatus.get() != ContainerStatus.ACTIVE) {
 			throw new ContainerShutdown("Container is shutting down or has been shut down; no new beans can be created (status: %s).".formatted(shutdownStatus.get()));
 		}
+	}
+
+	/**
+	 * Whether this is the {@link UninitializedContext} stand-in for a container whose
+	 * {@code startup()} has not run yet. A polymorphic state query — callers probe lifecycle
+	 * state, never {@code null}.
+	 */
+	boolean isUninitialized() {
+		return false;
 	}
 
 
@@ -116,7 +140,7 @@ public class Context<T> implements InternalResolutionContext {
 		}
 	}
 
-	public ShutdownStatus getShutdownStatus() {
+	public ContainerStatus getStatus() {
 		return shutdownStatus.get();
 	}
 
@@ -136,7 +160,7 @@ public class Context<T> implements InternalResolutionContext {
 	 * scope, best-effort. A failing {@code @PreDestroy} method does not abort the shutdown —
 	 * destruction continues with all remaining instances and the individual failures are
 	 * aggregated as suppressed exceptions on the thrown error (terminal status
-	 * {@link ShutdownStatus#FAILED} instead of {@link ShutdownStatus#SHUTDOWN}).
+	 * {@link ContainerStatus#FAILED} instead of {@link ContainerStatus#SHUTDOWN}).
 	 *
 	 * <p>Only one thread performs the shutdown (compare-and-set from {@code ACTIVE} to
 	 * {@code SHUTTING_DOWN}); concurrent or repeated calls are no-ops returning the terminal
@@ -149,7 +173,7 @@ public class Context<T> implements InternalResolutionContext {
 	 * beans; global state intentionally stays readable.</p>
 	 */
 	public void shutdown() {
-		if (!shutdownStatus.compareAndSet(ShutdownStatus.ACTIVE, ShutdownStatus.SHUTTING_DOWN)) {
+		if (!shutdownStatus.compareAndSet(ContainerStatus.ACTIVE, ContainerStatus.SHUTTING_DOWN)) {
 			return;
 		}
 		List<Throwable> failures = new ArrayList<>();
@@ -176,7 +200,7 @@ public class Context<T> implements InternalResolutionContext {
 			} while (progress);
 		} finally {
 			scopedInstances.clearThreadStates();
-			shutdownStatus.set(failures.isEmpty() ? ShutdownStatus.SHUTDOWN : ShutdownStatus.FAILED);
+			shutdownStatus.set(failures.isEmpty() ? ContainerStatus.SHUTDOWN : ContainerStatus.FAILED);
 		}
 		if (!failures.isEmpty()) {
 			DestructionFailed aggregated = new DestructionFailed("Shutdown completed with %d failing @PreDestroy invocation(s); all remaining instances were still destroyed best-effort.".formatted(failures.size()));

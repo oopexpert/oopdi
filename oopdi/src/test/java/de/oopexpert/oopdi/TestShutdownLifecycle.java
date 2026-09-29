@@ -8,6 +8,7 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import de.oopexpert.oopdi.exception.ContainerNotStarted;
 import de.oopexpert.oopdi.exception.ContainerShutdown;
 import de.oopexpert.oopdi.exception.DestructionFailed;
 import de.oopexpert.oopdi.metadata.MetadataMode;
@@ -30,32 +31,72 @@ import de.oopexpert.teststructure.ClassWithPreDestroy;
 class TestShutdownLifecycle {
 
     @Test
-    void testShutdownStatusTransitions() {
+    void testContainerStatusTransitions() {
         OOPDI<ClassWithPreDestroy> oopdi = new OOPDI<>(ClassWithPreDestroy.class);
 
-        Assertions.assertEquals(ShutdownStatus.ACTIVE, oopdi.getShutdownStatus());
+        Assertions.assertEquals(ContainerStatus.NOT_STARTED, oopdi.getStatus());
+
+        oopdi.startup();
+
+        Assertions.assertEquals(ContainerStatus.ACTIVE, oopdi.getStatus());
 
         oopdi.getInstance(ClassWithPreDestroy.class).isDestroyed();
         oopdi.shutdown();
 
-        Assertions.assertEquals(ShutdownStatus.SHUTDOWN, oopdi.getShutdownStatus());
+        Assertions.assertEquals(ContainerStatus.SHUTDOWN, oopdi.getStatus());
     }
 
     @Test
-    void testShutdownBeforeFirstUseIsNotSilentlyLost() {
+    void testShutdownBeforeStartupIsNeutral() {
         OOPDI<ClassA> oopdi = new OOPDI<>(ClassA.class);
+
+        Assertions.assertDoesNotThrow(oopdi::shutdown,
+            "Shutdown before startup destroys nothing and must stay neutral");
+
+        Assertions.assertEquals(ContainerStatus.NOT_STARTED, oopdi.getStatus(),
+            "A neutral shutdown before startup must not change the status");
+
+        Assertions.assertDoesNotThrow(() -> oopdi.startup(),
+            "Startup after a neutral shutdown must still work");
+        Assertions.assertNotNull(oopdi.getInstance(ClassA.class));
+        Assertions.assertEquals(ContainerStatus.ACTIVE, oopdi.getStatus());
+    }
+
+    @Test
+    void testBeanAccessBeforeStartupFailsFast() {
+        OOPDI<ClassA> oopdi = new OOPDI<>(ClassA.class);
+
+        Assertions.assertThrows(ContainerNotStarted.class, () -> oopdi.getInstance(ClassA.class),
+            "Bean access before startup must fail fast instead of starting implicitly");
+        Assertions.assertThrows(ContainerNotStarted.class, oopdi::validate,
+            "Validation before startup must fail fast instead of starting implicitly");
+    }
+
+    @Test
+    void testStartupIsIdempotent() {
+        OOPDI<ClassA> oopdi = new OOPDI<>(ClassA.class);
+
+        Assertions.assertDoesNotThrow(() -> oopdi.startup());
+        Assertions.assertDoesNotThrow(() -> oopdi.startup(),
+            "A second startup on a running container must be a no-op");
+        Assertions.assertNotNull(oopdi.getInstance(ClassA.class));
+    }
+
+    @Test
+    void testStartupAfterShutdownFailsFast() {
+        OOPDI<ClassA> oopdi = new OOPDI<>(ClassA.class);
+        oopdi.startup();
 
         oopdi.shutdown();
 
-        Assertions.assertEquals(ShutdownStatus.SHUTDOWN, oopdi.getShutdownStatus(),
-            "Shutdown with nothing to destroy still counts as shut down");
-        Assertions.assertThrows(ContainerShutdown.class, () -> oopdi.getInstance(ClassA.class),
-            "Beans created after shutdown was requested must fail fast, even if no Context existed yet");
+        Assertions.assertThrows(ContainerShutdown.class, () -> oopdi.startup(),
+            "A shut-down container cannot be restarted");
     }
 
     @Test
     void testFailingPreDestroyDoesNotAbortShutdownOfRemainingInstances() {
         OOPDI<ClassWithPreDestroy> oopdi = new OOPDI<>(ClassWithPreDestroy.class);
+        oopdi.startup();
 
         // Creation order determines destruction order (reverse): the well-behaved bean is
         // created first so that the failing one is destroyed first.
@@ -74,12 +115,13 @@ class TestShutdownLifecycle {
             "Remaining instances must still be destroyed best-effort after a @PreDestroy failure");
         Assertions.assertFalse(ex.getSuppressed().length == 0,
             "Individual @PreDestroy failures must be aggregated as suppressed exceptions");
-        Assertions.assertEquals(ShutdownStatus.FAILED, oopdi.getShutdownStatus());
+        Assertions.assertEquals(ContainerStatus.FAILED, oopdi.getStatus());
     }
 
     @Test
     void testShutdownIsIdempotent() {
         OOPDI<ClassFailingPreDestroy> oopdi = new OOPDI<>(ClassFailingPreDestroy.class);
+        oopdi.startup();
 
         ClassFailingPreDestroy failing = oopdi.getInstance(ClassFailingPreDestroy.class);
         failing.ping();
@@ -97,6 +139,7 @@ class TestShutdownLifecycle {
     @Test
     void testGetInstanceAfterShutdownFailsFast() {
         OOPDI<ClassWithPreDestroy> oopdi = new OOPDI<>(ClassWithPreDestroy.class);
+        oopdi.startup();
 
         oopdi.getInstance(ClassWithPreDestroy.class).isDestroyed();
         oopdi.shutdown();
@@ -110,12 +153,13 @@ class TestShutdownLifecycle {
         Assertions.assertThrows(ContainerShutdown.class,
             () -> oopdi.getInstance(ClassFailingPreDestroy.class).ping(),
             "No new beans may be created once shutdown has started");
-        Assertions.assertEquals(ShutdownStatus.SHUTDOWN, oopdi.getShutdownStatus());
+        Assertions.assertEquals(ContainerStatus.SHUTDOWN, oopdi.getStatus());
     }
 
     @Test
     void testFailedPostConstructLeavesNothingBehindInCache() {
         OOPDI<ClassFailingPostConstruct> oopdi = new OOPDI<>(ClassFailingPostConstruct.class);
+        oopdi.startup();
 
         // Baseline after setup: proxy creation itself runs the superclass constructor once,
         // so only the delta per request is meaningful (not the absolute count).
@@ -138,6 +182,7 @@ class TestShutdownLifecycle {
     @Test
     void testBeanFinishingConstructionDuringShutdownIsDestroyedImmediately() throws InterruptedException {
         OOPDI<ClassSlowConstruction> oopdi = new OOPDI<>(ClassSlowConstruction.class);
+        oopdi.startup();
         ClassSlowConstruction proxy = oopdi.getInstance(ClassSlowConstruction.class);
 
         ClassSlowConstruction.enteredConstructor = new CountDownLatch(1);
@@ -172,6 +217,7 @@ class TestShutdownLifecycle {
     @Test
     void testErrorInPostConstructLeavesNothingBehindInCache() {
         OOPDI<ClassFailingPostConstructError> oopdi = new OOPDI<>(ClassFailingPostConstructError.class);
+        oopdi.startup();
 
         oopdi.getInstance(ClassFailingPostConstructError.class);
         ClassFailingPostConstructError.constructorCallCount.set(0);
@@ -208,7 +254,7 @@ class TestShutdownLifecycle {
         };
         InstanceFactory factory = new InstanceFactory(stubContext, new ClassesResolver(),
                 null, new MetadataRepository(MetadataMode.DISABLED),
-                () -> ShutdownStatus.ACTIVE, instance -> {
+                () -> ContainerStatus.ACTIVE, instance -> {
                 });
         ScopedInstances scopedInstances = new ScopedInstances(new RequestScopeManager());
         Consumer<Object> failingPostProcessor = instance -> {
