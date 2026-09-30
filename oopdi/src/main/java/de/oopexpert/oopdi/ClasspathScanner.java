@@ -24,8 +24,8 @@ public class ClasspathScanner {
 	private static final String SUFFIX_JAR = ".jar";
 
 	/**
-	 * Scanned den Classpath nach allen Unterklassen oder Implementierungen der übergebenen Klasse
-	 * innerhalb des angegebenen Pakets (inkl. Unterpaketen).
+	 * Scans the classpath for all subclasses or implementations of the given class
+	 * within the given package (including subpackages).
 	 */
 	public <T> Set<Class<T>> findDerivedClasses(Class<T> parentClass, String packageName) {
 		try {
@@ -269,7 +269,7 @@ public class ClasspathScanner {
 	}
 
 	/**
-	 * Lädt eine Klasse ohne Ausführung ihrer statischen Initialisierer (initialize = false).
+	 * Loads a class without running its static initializers (initialize = false).
 	 */
 	private Class<?> loadWithoutInitializing(String className, Class<?> contextClass) throws ClassNotFoundException {
 		return Class.forName(className, false, contextClass.getClassLoader());

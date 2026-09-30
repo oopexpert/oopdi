@@ -26,11 +26,13 @@ public class ScopedInstances {
 	}
 
 	private synchronized InstancesState getThreadInstancesMap() {
-		
+		// Check-then-act is safe here only because the whole method is synchronized:
+		// concurrent first-time resolutions for different threads cannot interleave
+		// between get and put. Do not split this without keeping the lock.
 		if (threadInstanceMaps.get(currentThread()) == null) {
 			threadInstanceMaps.put(currentThread(), new InstancesState());
 		}
-		
+
 		return threadInstanceMaps.get(currentThread());
 	}
 

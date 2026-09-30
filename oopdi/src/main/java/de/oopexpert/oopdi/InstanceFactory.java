@@ -58,6 +58,9 @@ public class InstanceFactory {
 			InstancesState scopedMap = scopedInstances.getScopedInstancesState(Scope.of(c));
 			return lockedGetOrCreate(c, scopedMap, postProcessor, directConstructionPhase);
 		} catch (RuntimeException re) {
+			// Load-bearing passthrough (not dead code): without this branch, runtime
+			// exceptions would fall into the Exception handler below and be wrongly
+			// wrapped as CannotInject. Do not "simplify" away.
 			throw re;
 		} catch (Exception e) {
 			throw new CannotInject("Failed to resolve bean for '%s'.".formatted(x.getName()), e);
