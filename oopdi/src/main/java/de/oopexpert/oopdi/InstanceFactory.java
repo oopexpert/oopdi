@@ -54,50 +54,9 @@ public class InstanceFactory {
 
 	public <X> X getOrCreateInjectable(Class<X> x, ScopedInstances scopedInstances, Consumer<Object> postProcessor, ThreadLocal<Boolean> directConstructionPhase) {
 		try {
-			@SuppressWarnings("unchecked")
-			Class<X> c = (Class<X>) classesResolver.determineRelevantClass(x);
+			Class<X> c = determineRelevantClass(x);
 			InstancesState scopedMap = scopedInstances.getScopedInstancesState(Scope.of(c));
-			X instance;
-			synchronized (scopedMap.getLockFor(c)) {
-				if (!scopedMap.instanceExists(c)) {
-					instance = createInstance(c, scopedMap, directConstructionPhase);
-					if (shutdownState.get() != ContainerStatus.ACTIVE) {
-						// Lost the race against shutdown: this chain passed the entry guard
-						// before shutdown began but finished after. Never cache it (the
-						// shutdown drain may already have taken its final snapshot) — destroy
-						// it immediately instead, best-effort, then fail fast.
-						try {
-							immediateDestroyer.accept(instance);
-						} catch (Throwable t) {
-							ContainerShutdown shutdown = new ContainerShutdown("Container is shutting down or has been shut down; newly created instance of '%s' was destroyed immediately instead of caching.".formatted(c.getName()));
-							shutdown.addSuppressed(t);
-							throw shutdown;
-						}
-						throw new ContainerShutdown("Container is shutting down or has been shut down; newly created instance of '%s' was destroyed immediately instead of caching.".formatted(c.getName()));
-					}
-					scopedMap.put(c, instance);
-					log.debug("Created instance of {}", c.getName());
-					try {
-						postProcessor.accept(instance);
-					} catch (RuntimeException | Error e) {
-						// The bean is fully constructed but post-processing (field injection,
-						// @PostConstruct) failed: remove it again so no half-initialized
-						// instance stays behind in the cache. Deliberately including Error:
-						// even a failed Error must not leave a broken entry behind
-						// (precise rethrow keeps the original unchecked type, no throws
-						// declaration needed). Field-injection cycles keep working because
-						// the early put above is unchanged for the success path; only the
-						// failure path compensates.
-						scopedMap.remove(c);
-						throw e;
-					}
-				} else {
-					@SuppressWarnings("unchecked")
-					X existing = (X) scopedMap.get(c);
-					instance = existing;
-				}
-			}
-			return instance;
+			return lockedGetOrCreate(c, scopedMap, postProcessor, directConstructionPhase);
 		} catch (RuntimeException re) {
 			throw re;
 		} catch (Exception e) {
@@ -105,32 +64,113 @@ public class InstanceFactory {
 		}
 	}
 
+	@SuppressWarnings("unchecked")
+	private <X> Class<X> determineRelevantClass(Class<X> x) {
+		return (Class<X>) classesResolver.determineRelevantClass(x);
+	}
+
+	private <X> X lockedGetOrCreate(Class<X> c, InstancesState scopedMap, Consumer<Object> postProcessor, ThreadLocal<Boolean> directConstructionPhase) {
+		synchronized (scopedMap.getLockFor(c)) {
+			if (scopedMap.instanceExists(c)) {
+				return existingInstance(c, scopedMap);
+			} else {
+				return createPostProcessedInstance(c, scopedMap, postProcessor, directConstructionPhase);
+			}
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private <X> X existingInstance(Class<X> c, InstancesState scopedMap) {
+		return (X) scopedMap.get(c);
+	}
+
+	private <X> X createPostProcessedInstance(Class<X> c, InstancesState scopedMap, Consumer<Object> postProcessor, ThreadLocal<Boolean> directConstructionPhase) {
+		X instance = createInstance(c, scopedMap, directConstructionPhase);
+		rejectCachingAfterShutdown(c, instance);
+		cacheAndPostProcess(c, scopedMap, postProcessor, instance);
+		return instance;
+	}
+
+	private void rejectCachingAfterShutdown(Class<?> c, Object instance) {
+		if (shutdownState.get() == ContainerStatus.ACTIVE) {
+			// Running normally: the instance is cached below.
+		} else {
+			// Lost the race against shutdown: this chain passed the entry guard
+			// before shutdown began but finished after. Never cache it (the
+			// shutdown drain may already have taken its final snapshot) — destroy
+			// it immediately instead, best-effort, then fail fast.
+			destroyImmediatelyBestEffort(c, instance);
+			throw new ContainerShutdown("Container is shutting down or has been shut down; newly created instance of '%s' was destroyed immediately instead of caching.".formatted(c.getName()));
+		}
+	}
+
+	private void destroyImmediatelyBestEffort(Class<?> c, Object instance) {
+		try {
+			immediateDestroyer.accept(instance);
+		} catch (Throwable t) {
+			ContainerShutdown shutdown = new ContainerShutdown("Container is shutting down or has been shut down; newly created instance of '%s' was destroyed immediately instead of caching.".formatted(c.getName()));
+			shutdown.addSuppressed(t);
+			throw shutdown;
+		}
+	}
+
+	private <X> void cacheAndPostProcess(Class<X> c, InstancesState scopedMap, Consumer<Object> postProcessor, X instance) {
+		scopedMap.put(c, instance);
+		log.debug("Created instance of {}", c.getName());
+		try {
+			postProcessor.accept(instance);
+		} catch (RuntimeException | Error e) {
+			// The bean is fully constructed but post-processing (field injection,
+			// @PostConstruct) failed: remove it again so no half-initialized
+			// instance stays behind in the cache. Deliberately including Error:
+			// even a failed Error must not leave a broken entry behind
+			// (precise rethrow keeps the original unchecked type, no throws
+			// declaration needed). Field-injection cycles keep working because
+			// the early put above is unchanged for the success path; only the
+			// failure path compensates.
+			scopedMap.remove(c);
+			throw e;
+		}
+	}
+
 	private <X> X createInstance(Class<?> c, InstancesState scopedMap, ThreadLocal<Boolean> directConstructionPhase) {
 		synchronized (scopedMap.getLockFor(c)) {
-			if (scopedMap.isUnderConstruction(c)) {
-				throw new UnderConstruction("'%s' is still under construction.".formatted(c.getName()));
-			}
-			scopedMap.markUnderConstruction(c);
-			// Save/restore (not set/reset): resolutions nest - an outer chain resolving its 2nd+
-			// constructor parameter after a nested chain finished must still observe "in direct
-			// construction", otherwise nested dependencies would resolve as proxies instead of
-			// real objects. A null/outermost previous value removes the entry (no pool leak).
-			Boolean previousPhase = directConstructionPhase.get();
-			directConstructionPhase.set(true);
+			rejectCircularConstruction(c, scopedMap);
+			return constructWithPhaseTracking(c, scopedMap, directConstructionPhase);
+		}
+	}
+
+	private void rejectCircularConstruction(Class<?> c, InstancesState scopedMap) {
+		if (scopedMap.isUnderConstruction(c)) {
+			throw new UnderConstruction("'%s' is still under construction.".formatted(c.getName()));
+		}
+	}
+
+	private <X> X constructWithPhaseTracking(Class<?> c, InstancesState scopedMap, ThreadLocal<Boolean> directConstructionPhase) {
+		scopedMap.markUnderConstruction(c);
+		Boolean previousPhase = directConstructionPhase.get();
+		directConstructionPhase.set(true);
 		try {
 			return instantiateWith(getConstructor(c));
 		} catch (UnderConstruction cd) {
 			throw new CannotInject("Cycle in dependencies detected while performing constructor injection on '%s'.".formatted(c.getName()), cd);
 		} catch (Exception e) {
 			throw new CannotInject("Failed to instantiate class '%s'.".formatted(c.getName()), e);
-			} finally {
-				if (previousPhase == null) {
-					directConstructionPhase.remove();
-				} else {
-					directConstructionPhase.set(previousPhase);
-				}
-				scopedMap.unmarkUnderConstruction(c);
-			}
+		} finally {
+			restoreConstructionPhase(directConstructionPhase, previousPhase);
+			scopedMap.unmarkUnderConstruction(c);
+		}
+	}
+
+	private void restoreConstructionPhase(ThreadLocal<Boolean> directConstructionPhase, Boolean previousPhase) {
+		// Save/restore (not set/reset): resolutions nest - an outer chain resolving its 2nd+
+		// constructor parameter after a nested chain finished must still observe "in direct
+		// construction", otherwise nested dependencies would resolve as proxies instead of
+		// real objects. A null/outermost previous value removes the entry (no pool leak).
+		if (previousPhase == null) {
+			directConstructionPhase.remove();
+		} else {
+			directConstructionPhase.set(previousPhase);
 		}
 	}
 
@@ -142,13 +182,17 @@ public class InstanceFactory {
 	private Object[] resolveConstructorParameters(Class<?>[] parameterTypes) {
 		List<Object> parameters = new ArrayList<>();
 		for (var parameterType : parameterTypes) {
-			if (oopdi != null && OOPDI.class.isAssignableFrom(parameterType)) {
-				parameters.add(this.oopdi);
-			} else {
-				parameters.add(context.getOrCreate(parameterType));
-			}
+			parameters.add(resolveConstructorParameter(parameterType));
 		}
 		return parameters.toArray(new Object[0]);
+	}
+
+	private Object resolveConstructorParameter(Class<?> parameterType) {
+		if (oopdi != null && OOPDI.class.isAssignableFrom(parameterType)) {
+			return this.oopdi;
+		} else {
+			return context.getOrCreate(parameterType);
+		}
 	}
 
 	private Constructor<?> getConstructor(Class<?> c) {

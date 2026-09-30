@@ -29,14 +29,18 @@ public class ClasspathScanner {
 	 */
 	public <T> Set<Class<T>> findDerivedClasses(Class<T> parentClass, String packageName) {
 		try {
-			var classes = new HashSet<Class<T>>();
-			for (var classpathEntry : getClassPathEntries()) {
-				classes.addAll(getDerivedClassesInClasspath(parentClass, packageName, classpathEntry));
-			}
-			return classes;
+			return collectDerivedClasses(parentClass, packageName);
 		} catch (ClassNotFoundException | IOException e) {
 			throw new ClasspathScanFailed("Failed to scan classpath for subclasses of '%s' in package '%s'.".formatted(parentClass.getName(), packageName), e);
 		}
+	}
+
+	private <T> Set<Class<T>> collectDerivedClasses(Class<T> parentClass, String packageName) throws ClassNotFoundException, IOException {
+		var classes = new HashSet<Class<T>>();
+		for (var classpathEntry : getClassPathEntries()) {
+			classes.addAll(getDerivedClassesInClasspath(parentClass, packageName, classpathEntry));
+		}
+		return classes;
 	}
 
 	/**
@@ -47,30 +51,39 @@ public class ClasspathScanner {
 	 */
 	public Set<Class<?>> findAllAnnotatedClasses(Class<? extends Annotation> annotation) {
 		try {
-			var classes = new HashSet<Class<?>>();
-			for (var classpathEntry : getClassPathEntries()) {
-				classes.addAll(getAnnotatedClassesInClasspath(annotation, classpathEntry));
-			}
-			return classes;
+			return collectAnnotatedClasses(annotation);
 		} catch (IOException e) {
 			throw new ClasspathScanFailed("Failed to scan classpath for classes annotated with '%s'.".formatted(annotation.getName()), e);
 		}
 	}
 
-	private Set<Class<?>> getAnnotatedClassesInClasspath(Class<? extends Annotation> annotation, String classpathEntry) throws IOException {
+	private Set<Class<?>> collectAnnotatedClasses(Class<? extends Annotation> annotation) throws IOException {
 		var classes = new HashSet<Class<?>>();
-
-		if (classpathEntry.endsWith(SUFFIX_JAR)) {
-			classes.addAll(getAnnotatedClassesFromJar(annotation, classpathEntry));
-		} else {
-			var root = new File(classpathEntry);
-			if (root.isFile() && classpathEntry.endsWith(SUFFIX_CLASS)) {
-				findAnnotatedClassInFile(annotation, "", root).ifPresent(classes::add);
-			} else if (root.isDirectory()) {
-				classes.addAll(getAnnotatedClassesFromDirectory(annotation, "", root));
-			}
+		for (var classpathEntry : getClassPathEntries()) {
+			classes.addAll(getAnnotatedClassesInClasspath(annotation, classpathEntry));
 		}
 		return classes;
+	}
+
+	private Set<Class<?>> getAnnotatedClassesInClasspath(Class<? extends Annotation> annotation, String classpathEntry) throws IOException {
+		if (classpathEntry.endsWith(SUFFIX_JAR)) {
+			return getAnnotatedClassesFromJar(annotation, classpathEntry);
+		} else {
+			return getAnnotatedClassesFromFileSystemEntry(annotation, classpathEntry);
+		}
+	}
+
+	private Set<Class<?>> getAnnotatedClassesFromFileSystemEntry(Class<? extends Annotation> annotation, String classpathEntry) {
+		var root = new File(classpathEntry);
+		if (root.isFile() && classpathEntry.endsWith(SUFFIX_CLASS)) {
+			var classes = new HashSet<Class<?>>();
+			findAnnotatedClassInFile(annotation, "", root).ifPresent(classes::add);
+			return classes;
+		} else if (root.isDirectory()) {
+			return getAnnotatedClassesFromDirectory(annotation, "", root);
+		} else {
+			return new HashSet<>();
+		}
 	}
 
 	private Set<Class<?>> getAnnotatedClassesFromJar(Class<? extends Annotation> annotation, String classpathEntry) throws IOException {
@@ -78,15 +91,19 @@ public class ClasspathScanner {
 		try (var jarFile = new JarFile(classpathEntry)) {
 			var entries = jarFile.entries();
 			while (entries.hasMoreElements()) {
-				var jarEntry = entries.nextElement();
-				var jarEntryName = jarEntry.getName();
-				if (jarEntryName.endsWith(SUFFIX_CLASS)) {
-					var className = toClassName(jarEntryName);
-					tryLoadIfAnnotated(annotation, className).ifPresent(classes::add);
-				}
+				findAnnotatedClassInJarEntry(annotation, entries.nextElement()).ifPresent(classes::add);
 			}
 		}
 		return classes;
+	}
+
+	private Optional<Class<?>> findAnnotatedClassInJarEntry(Class<? extends Annotation> annotation, JarEntry jarEntry) {
+		var jarEntryName = jarEntry.getName();
+		if (jarEntryName.endsWith(SUFFIX_CLASS)) {
+			return tryLoadIfAnnotated(annotation, toClassName(jarEntryName));
+		} else {
+			return Optional.empty();
+		}
 	}
 
 	private Set<Class<?>> getAnnotatedClassesFromDirectory(Class<? extends Annotation> annotation, String packageName, File directory) {
@@ -94,24 +111,41 @@ public class ClasspathScanner {
 		var files = directory.listFiles();
 		if (files != null) {
 			for (var file : files) {
-				if (file.isDirectory()) {
-					String childPackage = packageName.isEmpty() ? file.getName() : packageName + PACKAGE_SEPARATOR + file.getName();
-					classes.addAll(getAnnotatedClassesFromDirectory(annotation, childPackage, file));
-				} else {
-					findAnnotatedClassInFile(annotation, packageName, file).ifPresent(classes::add);
-				}
+				classes.addAll(getAnnotatedClassesFromDirectoryEntry(annotation, packageName, file));
 			}
 		}
 		return classes;
 	}
 
+	private Set<Class<?>> getAnnotatedClassesFromDirectoryEntry(Class<? extends Annotation> annotation, String packageName, File file) {
+		if (file.isDirectory()) {
+			return getAnnotatedClassesFromDirectory(annotation, qualifiedName(packageName, file.getName()), file);
+		} else {
+			var classes = new HashSet<Class<?>>();
+			findAnnotatedClassInFile(annotation, packageName, file).ifPresent(classes::add);
+			return classes;
+		}
+	}
+
 	private Optional<Class<?>> findAnnotatedClassInFile(Class<? extends Annotation> annotation, String packageName, File file) {
-		if (!file.getName().endsWith(SUFFIX_CLASS)) {
+		if (file.getName().endsWith(SUFFIX_CLASS)) {
+			return tryLoadIfAnnotated(annotation, qualifiedName(packageName, simpleClassName(file)));
+		} else {
 			return Optional.empty();
 		}
-		var simpleName = file.getName().substring(0, file.getName().length() - SUFFIX_CLASS.length());
-		var className = packageName.isEmpty() ? simpleName : packageName + PACKAGE_SEPARATOR + simpleName;
-		return tryLoadIfAnnotated(annotation, className);
+	}
+
+	private String qualifiedName(String packageName, String simpleName) {
+		if (packageName.isEmpty()) {
+			return simpleName;
+		} else {
+			return packageName + PACKAGE_SEPARATOR + simpleName;
+		}
+	}
+
+	private String simpleClassName(File file) {
+		String fileName = file.getName();
+		return fileName.substring(0, fileName.length() - SUFFIX_CLASS.length());
 	}
 
 	/**
@@ -124,31 +158,46 @@ public class ClasspathScanner {
 	 */
 	private Optional<Class<?>> tryLoadIfAnnotated(Class<? extends Annotation> annotation, String className) {
 		try {
-			var clazz = loadWithoutInitializing(className, getClass());
-			return clazz.isAnnotationPresent(annotation) ? Optional.of(clazz) : Optional.empty();
+			return loadIfAnnotated(annotation, className);
 		} catch (ClassNotFoundException | LinkageError e) {
 			log.debug("Skipping unloadable classpath entry '{}' during annotation scan", className, e);
 			return Optional.empty();
 		}
 	}
 
-	private <T> Set<Class<T>> getDerivedClassesInClasspath(Class<T> parentClass, String packageName, String classpathEntry) throws ClassNotFoundException, IOException {
-		var classes = new HashSet<Class<T>>();
-
-		if (classpathEntry.endsWith(SUFFIX_JAR)) {
-			classes.addAll(getDerivedClassesFromJar(parentClass, toPathName(packageName), classpathEntry));
+	private Optional<Class<?>> loadIfAnnotated(Class<? extends Annotation> annotation, String className) throws ClassNotFoundException {
+		var clazz = loadWithoutInitializing(className, getClass());
+		if (clazz.isAnnotationPresent(annotation)) {
+			return Optional.of(clazz);
 		} else {
-			var entry = new File(classpathEntry);
-			if (entry.isFile() && classpathEntry.endsWith(SUFFIX_CLASS)) {
-				classes.addAll(getDerivedClassesFromDirectoryOrClassFile(parentClass, packageName, entry));
-			} else {
-				var directory = new File(classpathEntry, toPathName(packageName));
-				if (directory.exists()) {
-					classes.addAll(getDerivedClassesFromDirectory(parentClass, packageName, directory));
-				}
-			}
+			return Optional.empty();
 		}
-		return classes;
+	}
+
+	private <T> Set<Class<T>> getDerivedClassesInClasspath(Class<T> parentClass, String packageName, String classpathEntry) throws ClassNotFoundException, IOException {
+		if (classpathEntry.endsWith(SUFFIX_JAR)) {
+			return getDerivedClassesFromJar(parentClass, toPathName(packageName), classpathEntry);
+		} else {
+			return getDerivedClassesFromFileSystemEntry(parentClass, packageName, classpathEntry);
+		}
+	}
+
+	private <T> Set<Class<T>> getDerivedClassesFromFileSystemEntry(Class<T> parentClass, String packageName, String classpathEntry) throws ClassNotFoundException {
+		var entry = new File(classpathEntry);
+		if (entry.isFile() && classpathEntry.endsWith(SUFFIX_CLASS)) {
+			return getDerivedClassesFromDirectoryOrClassFile(parentClass, packageName, entry);
+		} else {
+			return getDerivedClassesFromPackageDirectory(parentClass, packageName, classpathEntry);
+		}
+	}
+
+	private <T> Set<Class<T>> getDerivedClassesFromPackageDirectory(Class<T> parentClass, String packageName, String classpathEntry) throws ClassNotFoundException {
+		var directory = new File(classpathEntry, toPathName(packageName));
+		if (directory.exists()) {
+			return getDerivedClassesFromDirectory(parentClass, packageName, directory);
+		} else {
+			return new HashSet<>();
+		}
 	}
 
 	private String[] getClassPathEntries() {
@@ -160,27 +209,34 @@ public class ClasspathScanner {
 		try (var jarFile = new JarFile(classpathEntry)) {
 			var entries = jarFile.entries();
 			while (entries.hasMoreElements()) {
-				var classInJarEntry = findAssignableClassInJarEntry(parentClass, path, entries.nextElement());
-				if (classInJarEntry != null) {
-					classes.add(classInJarEntry);
-				}
+				findAssignableClassInJarEntry(parentClass, path, entries.nextElement()).ifPresent(classes::add);
 			}
 		}
 		return classes;
 	}
 
-	private <T> Class<T> findAssignableClassInJarEntry(Class<T> parentClass, String path, JarEntry jarEntry) throws ClassNotFoundException {
+	private <T> Optional<Class<T>> findAssignableClassInJarEntry(Class<T> parentClass, String path, JarEntry jarEntry) throws ClassNotFoundException {
 		var jarEntryName = jarEntry.getName();
 		if (jarEntryName.startsWith(path) && jarEntryName.endsWith(SUFFIX_CLASS)) {
-			var className = toClassName(jarEntryName);
-			var clazz = loadWithoutInitializing(className, parentClass);
-			if (parentClass.isAssignableFrom(clazz) && !parentClass.equals(clazz)) {
-				@SuppressWarnings("unchecked")
-				Class<T> casted = (Class<T>) clazz;
-				return casted;
-			}
+			return loadAssignableClass(parentClass, toClassName(jarEntryName));
+		} else {
+			return Optional.empty();
 		}
-		return null;
+	}
+
+	private <T> Optional<Class<T>> loadAssignableClass(Class<T> parentClass, String className) throws ClassNotFoundException {
+		var clazz = loadWithoutInitializing(className, parentClass);
+		if (isRelevantSubclass(parentClass, clazz)) {
+			@SuppressWarnings("unchecked")
+			Class<T> casted = (Class<T>) clazz;
+			return Optional.of(casted);
+		} else {
+			return Optional.empty();
+		}
+	}
+
+	private static <T> boolean isRelevantSubclass(Class<T> parentClass, Class<?> clazz) {
+		return parentClass.isAssignableFrom(clazz) && !parentClass.equals(clazz);
 	}
 
 	private <T> Set<Class<T>> getDerivedClassesFromDirectory(Class<T> parentClass, String packageName, File directory) throws ClassNotFoundException {
@@ -199,25 +255,17 @@ public class ClasspathScanner {
 		if (file.isDirectory()) {
 			classes.addAll(findDerivedClasses(parentClass, packageName + PACKAGE_SEPARATOR + file.getName()));
 		} else {
-			var clazz = findAssignableClassInFile(parentClass, packageName, file);
-			if (clazz != null) {
-				classes.add(clazz);
-			}
+			findAssignableClassInFile(parentClass, packageName, file).ifPresent(classes::add);
 		}
 		return classes;
 	}
 
-	private <T> Class<T> findAssignableClassInFile(Class<T> parentClass, String packageName, File file) throws ClassNotFoundException {
+	private <T> Optional<Class<T>> findAssignableClassInFile(Class<T> parentClass, String packageName, File file) throws ClassNotFoundException {
 		if (file.getName().endsWith(SUFFIX_CLASS)) {
-			var className = toClassName(packageName, file);
-			var clazz = loadWithoutInitializing(className, parentClass);
-			if (parentClass.isAssignableFrom(clazz) && !parentClass.equals(clazz)) {
-				@SuppressWarnings("unchecked")
-				Class<T> casted = (Class<T>) clazz;
-				return casted;
-			}
+			return loadAssignableClass(parentClass, toClassName(packageName, file));
+		} else {
+			return Optional.empty();
 		}
-		return null;
 	}
 
 	/**

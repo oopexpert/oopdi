@@ -125,18 +125,26 @@ public class Context<T> implements InternalResolutionContext {
 	public void injectFields(Object instance) {
 		ClassMetadata metadata = metadataRepository.getMetadata(instance.getClass());
 		for (InjectionPoint point : metadata.getFieldInjectionPoints()) {
-			if (resolverPipeline.supports(point)) {
-				Field field = ((FieldInjectionPoint) point).field();
-				field.setAccessible(true);
-				Object resolvedValue = resolverPipeline.resolve(point, this);
-				try {
-					field.set(instance, resolvedValue);
-				} catch (IllegalAccessException | IllegalArgumentException e) {
-					// IllegalArgumentException covers wrong-type values reaching a field
-					// (e.g. an unparsable custom type falling back to String).
-					throw new CannotInject("Field injection failed for field '%s' declared in '%s'.".formatted(field.getName(), point.getDeclaringClass().getName()), e);
-				}
-			}
+			injectFieldIfSupported(instance, point);
+		}
+	}
+
+	private void injectFieldIfSupported(Object instance, InjectionPoint point) {
+		if (resolverPipeline.supports(point)) {
+			injectField(instance, point);
+		}
+	}
+
+	private void injectField(Object instance, InjectionPoint point) {
+		Field field = ((FieldInjectionPoint) point).field();
+		field.setAccessible(true);
+		Object resolvedValue = resolverPipeline.resolve(point, this);
+		try {
+			field.set(instance, resolvedValue);
+		} catch (IllegalAccessException | IllegalArgumentException e) {
+			// IllegalArgumentException covers wrong-type values reaching a field
+			// (e.g. an unparsable custom type falling back to String).
+			throw new CannotInject("Field injection failed for field '%s' declared in '%s'.".formatted(field.getName(), point.getDeclaringClass().getName()), e);
 		}
 	}
 
@@ -179,33 +187,71 @@ public class Context<T> implements InternalResolutionContext {
 		List<Throwable> failures = new ArrayList<>();
 		Set<Object> destroyed = Collections.newSetFromMap(new IdentityHashMap<>());
 		try {
-			boolean progress;
-			do {
-				progress = false;
-				for (InstancesState state : scopedInstances.allInstanceStates()) {
-					for (Object instance : state.allInstancesInReverseCreationOrder()) {
-						if (destroyed.add(instance)) {
-							progress = true;
-							try {
-								lifecycleProcessor.invokePreDestroy(instance);
-							} catch (Throwable e) {
-								// Deliberately Throwable (not just RuntimeException): a failing
-								// cleanup - including an Error - must never abort the remaining
-								// destructions. Everything is aggregated and rethrown below.
-								failures.add(e);
-							}
-						}
-					}
-				}
-			} while (progress);
+			drainUndestroyedInstances(failures, destroyed);
 		} finally {
 			scopedInstances.clearThreadStates();
 			shutdownStatus.set(failures.isEmpty() ? ContainerStatus.SHUTDOWN : ContainerStatus.FAILED);
 		}
 		if (!failures.isEmpty()) {
-			DestructionFailed aggregated = new DestructionFailed("Shutdown completed with %d failing @PreDestroy invocation(s); all remaining instances were still destroyed best-effort.".formatted(failures.size()));
-			failures.forEach(aggregated::addSuppressed);
-			throw aggregated;
+			throw buildDestructionFailedException(failures);
+		}
+	}
+
+	private DestructionFailed buildDestructionFailedException(List<Throwable> failures) {
+		DestructionFailed aggregated = new DestructionFailed("Shutdown completed with %d failing @PreDestroy invocation(s); all remaining instances were still destroyed best-effort.".formatted(failures.size()));
+		failures.forEach(aggregated::addSuppressed);
+		return aggregated;
+	}
+
+	/**
+	 * Drives destruction passes until a pass finds nothing new: instances finishing
+	 * construction concurrently with shutdown are picked up by later passes, so the loop
+	 * terminates only in quiescence.
+	 */
+	private void drainUndestroyedInstances(List<Throwable> failures, Set<Object> destroyed) {
+		boolean progress;
+		do {
+			progress = runDestructionPass(failures, destroyed);
+		} while (progress);
+	}
+
+	/**
+	 * One pass over every scope state in reverse creation order. Reports whether any
+	 * not-yet-destroyed instance was found; non-short-circuit {@code |=} runs every state
+	 * even after progress was made.
+	 */
+	private boolean runDestructionPass(List<Throwable> failures, Set<Object> destroyed) {
+		boolean progress = false;
+		for (InstancesState state : scopedInstances.allInstanceStates()) {
+			progress |= destroyScopeInstances(state, failures, destroyed);
+		}
+		return progress;
+	}
+
+	private boolean destroyScopeInstances(InstancesState state, List<Throwable> failures, Set<Object> destroyed) {
+		boolean progress = false;
+		for (Object instance : state.allInstancesInReverseCreationOrder()) {
+			progress |= destroyInstanceIfNew(instance, failures, destroyed);
+		}
+		return progress;
+	}
+
+	private boolean destroyInstanceIfNew(Object instance, List<Throwable> failures, Set<Object> destroyed) {
+		if (destroyed.add(instance)) {
+			destroyInstanceBestEffort(instance, failures);
+			return true;
+		}
+		return false;
+	}
+
+	private void destroyInstanceBestEffort(Object instance, List<Throwable> failures) {
+		try {
+			lifecycleProcessor.invokePreDestroy(instance);
+		} catch (Throwable e) {
+			// Deliberately Throwable (not just RuntimeException): a failing
+			// cleanup - including an Error - must never abort the remaining
+			// destructions. Everything is aggregated and rethrown below.
+			failures.add(e);
 		}
 	}
 }

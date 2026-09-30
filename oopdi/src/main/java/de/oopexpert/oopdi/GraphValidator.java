@@ -56,83 +56,27 @@ public final class GraphValidator {
 
 	public void validate(Class<?> rootClazz) {
 		Objects.requireNonNull(rootClazz, "rootClazz must not be null");
-		Traversal traversal = new Traversal(instanceFactory, classesResolver, metadataRepository, lifecycleProcessor);
-		visit(rootClazz, traversal);
+		Traversal traversal = new Traversal(instanceFactory, classesResolver, metadataRepository, lifecycleProcessor, resolverPipeline).visit(rootClazz);
 		if (!traversal.problems.isEmpty()) {
-			CannotInject aggregated = new CannotInject("Startup validation failed with %d problem(s):\n- %s".formatted(
-					traversal.problems.size(), String.join("\n- ", traversal.problems)));
-			traversal.causes.forEach(aggregated::addSuppressed);
-			throw aggregated;
+			throw buildCannotInjectException(traversal);
 		}
 	}
 
-	private void visit(Class<?> requested, Traversal traversal) {
-		visitEdge(requested, true, traversal);
-	}
-
-	private void visitEdge(Class<?> requested, boolean viaConstructor, Traversal traversal) {
-		Optional<Class<?>> relevant = traversal.resolve(requested);
-		if (relevant.isPresent() && traversal.enter(relevant.get(), viaConstructor)) {
-			try {
-				inspect(relevant.get(), traversal);
-			} finally {
-				traversal.leave(relevant.get());
-			}
-		}
-	}
-
-	private void inspect(Class<?> relevant, Traversal traversal) {
-		Optional<ClassMetadata> metadata = traversal.inspectMetadata(relevant);
-		if (metadata.isPresent()) {
-			ClassMetadata inspected = metadata.get();
-			traversal.checkProxiability(relevant, inspected);
-			traversal.checkLifecycle(inspected);
-			inspectConstructor(inspected, traversal);
-			inspectFields(inspected, traversal);
-			inspectPostConstruct(inspected, traversal);
-		}
-	}
-
-	private void inspectConstructor(ClassMetadata metadata, Traversal traversal) {
-		var primaryConstructor = metadata.getPrimaryConstructor();
-		if (primaryConstructor != null) {
-			for (Class<?> parameterType : primaryConstructor.getParameterTypes()) {
-				traverseDependency(parameterType, true, traversal);
-			}
-		}
-	}
-
-	private void inspectFields(ClassMetadata metadata, Traversal traversal) {
-		for (InjectionPoint point : metadata.getFieldInjectionPoints()) {
-			if (resolverPipeline.supports(point)) {
-				for (Class<?> dependency : traversal.inspectField(metadata.getTargetClass(), point)) {
-					visitEdge(dependency, false, traversal);
-				}
-			}
-		}
-	}
-
-	private void inspectPostConstruct(ClassMetadata metadata, Traversal traversal) {
-		for (Method postConstruct : metadata.getPostConstructMethods()) {
-			for (Class<?> parameterType : postConstruct.getParameterTypes()) {
-				traverseDependency(parameterType, false, traversal);
-			}
-		}
-	}
-
-	private void traverseDependency(Class<?> dependency, boolean viaConstructor, Traversal traversal) {
-		// No special-casing for primitives, Strings or arrays: the runtime resolves every
-		// constructor parameter through getOrCreate (which rejects anything non-eligible), so
-		// the validator must report them the same way instead of silently skipping them.
-		// Only the container itself is directly injectable without being a bean.
-		if (!OOPDI.class.isAssignableFrom(dependency)) {
-			visitEdge(dependency, viaConstructor, traversal);
-		}
+	private CannotInject buildCannotInjectException(Traversal traversal) {
+		CannotInject aggregated = new CannotInject("Startup validation failed with %d problem(s):\n- %s".formatted(
+				traversal.problems.size(), String.join("\n- ", traversal.problems.stream().map(Traversal.Problem::text).toList())));
+		// Each cause stays attached to its own problem line (labeled slot carrying the
+		// original as cause chain), so the mapping survives aggregation instead of dissolving
+		// into an unlabeled bag.
+		traversal.problems.forEach(problem -> problem.cause()
+				.ifPresent(cause -> aggregated.addSuppressed(new CannotInject(problem.text(), cause))));
+		return aggregated;
 	}
 
 	/**
-	 * Bundles the mutable traversal state (chain, finished set, collected problems) that would
-	 * otherwise be threaded through every method as parameters.
+	 * Owns the mutable traversal state (chain, finished set, collected problems) together
+	 * with the traversal algorithm operating on it: every method here reads and writes only
+	 * this object's state, so no traversal state is ever passed in from outside.
 	 */
 	private static final class Traversal {
 
@@ -140,14 +84,14 @@ public final class GraphValidator {
 		private final ClassesResolver classesResolver;
 		private final MetadataRepository metadataRepository;
 		private final LifecycleProcessor lifecycleProcessor;
+		private final DependencyResolverPipeline resolverPipeline;
 		// Same defaults the runtime resolvers use (Context wires no custom registry anywhere);
 		// trial parsing is side-effect free for these built-in parsers.
 		private final TypeParserRegistry typeParserRegistry = new TypeParserRegistry();
 
 		private final Deque<Step> path = new ArrayDeque<>();
 		private final Set<Class<?>> done = new HashSet<>();
-		private final List<String> problems = new ArrayList<>();
-		private final List<Throwable> causes = new ArrayList<>();
+		private final List<Problem> problems = new ArrayList<>();
 
 		/**
 		 * One chain link: the bean type plus how the chain reached it. Only constructor edges
@@ -159,12 +103,95 @@ public final class GraphValidator {
 		private record Step(Class<?> type, boolean viaConstructor) {
 		}
 
+		/**
+		 * A single recorded finding: the complete "'owner': detail" message plus the optional
+		 * cause. Pairing both keeps which cause belongs to which problem all the way into
+		 * the aggregated exception — no parallel lists that can drift apart.
+		 */
+		private record Problem(String text, Optional<Throwable> cause) {
+
+			static Problem of(String text) {
+				return new Problem(text, Optional.empty());
+			}
+
+			static Problem of(String text, Throwable cause) {
+				return new Problem(text, Optional.of(cause));
+			}
+		}
+
 		Traversal(InstanceFactory instanceFactory, ClassesResolver classesResolver,
-				MetadataRepository metadataRepository, LifecycleProcessor lifecycleProcessor) {
+				MetadataRepository metadataRepository, LifecycleProcessor lifecycleProcessor,
+				DependencyResolverPipeline resolverPipeline) {
 			this.instanceFactory = instanceFactory;
 			this.classesResolver = classesResolver;
 			this.metadataRepository = metadataRepository;
 			this.lifecycleProcessor = lifecycleProcessor;
+			this.resolverPipeline = resolverPipeline;
+		}
+
+		Traversal visit(Class<?> requested) {
+			visitEdge(requested, true);
+			return this;
+		}
+
+		private void visitEdge(Class<?> requested, boolean viaConstructor) {
+			Optional<Class<?>> relevant = resolve(requested);
+			if (relevant.isPresent() && enter(relevant.get(), viaConstructor)) {
+				try {
+					inspect(relevant.get());
+				} finally {
+					leave(relevant.get());
+				}
+			}
+		}
+
+		private void inspect(Class<?> relevant) {
+			Optional<ClassMetadata> metadata = inspectMetadata(relevant);
+			if (metadata.isPresent()) {
+				ClassMetadata inspected = metadata.get();
+				checkProxiability(relevant, inspected);
+				checkLifecycle(inspected);
+				inspectConstructor(inspected);
+				inspectFields(inspected);
+				inspectPostConstruct(inspected);
+			}
+		}
+
+		private void inspectConstructor(ClassMetadata metadata) {
+			var primaryConstructor = metadata.getPrimaryConstructor();
+			if (primaryConstructor != null) {
+				for (Class<?> parameterType : primaryConstructor.getParameterTypes()) {
+					traverseDependency(parameterType, true);
+				}
+			}
+		}
+
+		private void inspectFields(ClassMetadata metadata) {
+			for (InjectionPoint point : metadata.getFieldInjectionPoints()) {
+				if (resolverPipeline.supports(point)) {
+					for (Class<?> dependency : inspectField(metadata.getTargetClass(), point)) {
+						visitEdge(dependency, false);
+					}
+				}
+			}
+		}
+
+		private void inspectPostConstruct(ClassMetadata metadata) {
+			for (Method postConstruct : metadata.getPostConstructMethods()) {
+				for (Class<?> parameterType : postConstruct.getParameterTypes()) {
+					traverseDependency(parameterType, false);
+				}
+			}
+		}
+
+		private void traverseDependency(Class<?> dependency, boolean viaConstructor) {
+			// No special-casing for primitives, Strings or arrays: the runtime resolves every
+			// constructor parameter through getOrCreate (which rejects anything non-eligible), so
+			// the validator must report them the same way instead of silently skipping them.
+			// Only the container itself is directly injectable without being a bean.
+			if (!OOPDI.class.isAssignableFrom(dependency)) {
+				visitEdge(dependency, viaConstructor);
+			}
 		}
 
 		/**
@@ -314,42 +341,56 @@ public final class GraphValidator {
 		List<Class<?>> inspectField(Class<?> owner, InjectionPoint point) {
 			List<Class<?>> dependencies = new ArrayList<>();
 			if (point.hasAnnotation(InjectVariable.class)) {
-				try {
-					String value = VariableDependencyResolver.requireVariableValue(point);
-					if (value != null) {
-						Object parsed;
-						try {
-							parsed = typeParserRegistry.parse(value, point.getType());
-						} catch (RuntimeException e) {
-							// Deliberately wider than IllegalArgumentException (mirrored below in the
-							// runtime resolver): parsers like charAt(0) fail with other runtime
-							// exceptions on degenerate input such as empty strings.
-							problem(owner.getName(), "Cannot inject variable: invalid format for key '%s' in source %s for field in '%s' (value '%s').".formatted(
-									point.findAnnotation(InjectVariable.class).orElseThrow().key(),
-									point.findAnnotation(InjectVariable.class).orElseThrow().source().name(),
-									owner.getName(), value), e);
-							return dependencies;
-						}
-						if (!isAssignableToField(parsed, point.getType())) {
-							problem(owner.getName(), "Cannot inject variable: value of type '%s' is not assignable to field of type '%s' for key '%s'.".formatted(
-									parsed.getClass().getName(), point.getType().getName(),
-									point.findAnnotation(InjectVariable.class).orElseThrow().key()));
-						}
-					}
-				} catch (CannotInject e) {
-					problem(owner, e);
-				}
+				inspectVariableField(owner, point);
 			} else if (point.hasAnnotation(InjectSet.class)) {
-				Class<?> hint = point.findAnnotation(InjectSet.class).orElseThrow().hint();
-				try {
-					dependencies.addAll(classesResolver.getSet(hint));
-				} catch (RuntimeException e) {
-					problem(owner, e);
-				}
+				inspectSetField(owner, point, dependencies);
 			} else {
 				dependencies.add(point.getType());
 			}
 			return dependencies;
+		}
+
+		private void inspectVariableField(Class<?> owner, InjectionPoint point) {
+			InjectVariable annotation = point.findAnnotation(InjectVariable.class).orElseThrow();
+			try {
+				String value = VariableDependencyResolver.requireVariableValue(point);
+				if (value != null) {
+					checkVariableValue(owner, point, annotation, value);
+				}
+			} catch (CannotInject e) {
+				problem(owner, e);
+			}
+		}
+
+		private void checkVariableValue(Class<?> owner, InjectionPoint point, InjectVariable annotation, String value) {
+			try {
+				checkVariableAssignable(owner, point, annotation, typeParserRegistry.parse(value, point.getType()));
+			} catch (RuntimeException e) {
+				// Deliberately wider than IllegalArgumentException (mirrored below in the
+				// runtime resolver): parsers like charAt(0) fail with other runtime
+				// exceptions on degenerate input such as empty strings.
+				problem(owner.getName(), "Cannot inject variable: invalid format for key '%s' in source %s for field in '%s' (value '%s').".formatted(
+						annotation.key(),
+						annotation.source().name(),
+						owner.getName(), value), e);
+			}
+		}
+
+		private void checkVariableAssignable(Class<?> owner, InjectionPoint point, InjectVariable annotation, Object parsed) {
+			if (!isAssignableToField(parsed, point.getType())) {
+				problem(owner.getName(), "Cannot inject variable: value of type '%s' is not assignable to field of type '%s' for key '%s'.".formatted(
+						parsed.getClass().getName(), point.getType().getName(),
+						annotation.key()));
+			}
+		}
+
+		private void inspectSetField(Class<?> owner, InjectionPoint point, List<Class<?>> dependencies) {
+			Class<?> hint = point.findAnnotation(InjectSet.class).orElseThrow().hint();
+			try {
+				dependencies.addAll(classesResolver.getSet(hint));
+			} catch (RuntimeException e) {
+				problem(owner, e);
+			}
 		}
 
 		private String describeCycle(Class<?> relevant) {
@@ -370,12 +411,11 @@ public final class GraphValidator {
 		}
 
 		private void problem(Class<?> owner, RuntimeException e) {
-			problem(owner.getName(), e.getMessage());
-			causes.add(e);
+			problem(owner.getName(), e.getMessage(), e);
 		}
 
 		private void problem(String ownerName, String detail) {
-			problems.add("'%s': %s".formatted(ownerName, detail));
+			problems.add(Problem.of("'%s': %s".formatted(ownerName, detail)));
 		}
 
 		/**
@@ -388,8 +428,7 @@ public final class GraphValidator {
 		}
 
 		private void problem(String ownerName, String detail, Throwable cause) {
-			problem(ownerName, detail);
-			causes.add(cause);
+			problems.add(Problem.of("'%s': %s".formatted(ownerName, detail), cause));
 		}
 	}
 }
