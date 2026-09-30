@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.0 (2026-09-30)
+
+- feat!: require explicit startup() before bean access
+- fix: build startup banner from explicit literals matching README
+- fix: build startup banner from explicit literals matching README
+- feat: print startup banner on container creation
+- fix: close shutdown races and align validation with runtime failures
+- feat: align startup validation with runtime semantics
+- revert: drop premature deprecation ceremony (no external users yet)
+- feat: add opt-in startup graph validation
+- fix: dedicated error types, explicit failures, templated messages
+- fix: harden thread and lifecycle hygiene leftovers
+- fix: harden leftover robustness gaps (atomic cache fill, optional primitives)
+- feat: share generated proxy classes across containers
+- fix: destroy REQUEST beans at request-chain end
+- fix: isolate REQUEST scope state per container
+- fix: harden shutdown with state handling and best-effort destruction
+- fix: make shared per-scope instance cache thread-safe
+- feat!: add background metadata warmup with MetadataMode
+- fix: restore single-constructor validation as MultipleConstructors
+
 ## 0.3.0 (2026-09-20)
 
 - Merge branch 'main' of https://github.com/oopexpert/oopdi.git into main
