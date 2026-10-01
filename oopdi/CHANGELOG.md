@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1 (2026-10-01)
+
+- fix: restrict field injection detection to @InjectInstance only
+- Harden release workflow against missing CHANGELOG and document intentional behavior
+
 ## 1.0.0 (2026-09-30)
 
 - feat!: require explicit startup() before bean access
