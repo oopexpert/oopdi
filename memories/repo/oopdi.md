@@ -19,7 +19,7 @@ mvn test
   (use `Select-String`), `Out-File`/`>` redirection encoding pitfalls (UTF-16 default for `>`,
   no `utf8NoBOM` in PS 5.1 `Set-Content`), no Python. Prefer dedicated file tools over shell
   for file ops; avoid `git apply` patch surgery — use exact-match edits instead.
-- 89 tests green (JUnit Jupiter 5, `Test*` per feature + `teststructure` fixtures).
+- 95 tests green (JUnit Jupiter 5, `Test*` per feature + `teststructure` fixtures).
 - JMH benchmarks under `.../oopdi/benchmark/` (`*Benchmark`, test-scoped JMH 1.37) run manually
   only, never in `mvn test`; results are hardware-dependent and never committed.
 
@@ -60,6 +60,18 @@ mvn test
 - `directConstructionPhase` is save/restore (plain `ThreadLocal`, `remove()` at outermost end).
 - THREAD has no supplier-level `ThreadLocal` (canonical cache in `ScopedInstances`,
   dropped at shutdown via `clearThreadStates`).
+- Field injection point detection is annotation-only, strictly stricter than constructor
+  parameters: `resolver.impl.InstanceDependencyResolver#supports` discriminates via
+  `point instanceof FieldInjectionPoint` (sealed `InjectionPoint` subtype, not an
+  `AnnotatedElement`/`Field` `instanceof` guess) — fields support only `@InjectInstance`;
+  the "not `java.*`-prefixed ⇒ injectable" type-name fallback applies exclusively to
+  `ParameterInjectionPoint` (constructor params, per README). Every declared field becomes a
+  `FieldInjectionPoint` regardless of annotations (`MetadataRepository.collectFields`), so
+  before this fix any unannotated field of a `javax.*` type or a project-local
+  non-`@Injectable` type was misdetected and either threw `CannotInject` or had its
+  constructor-assigned value silently overwritten by `Context.injectField`'s unconditional
+  `field.set`. `Context.injectField` itself still has no null/final guard — annotating a
+  field is the documented opt-in contract for letting the framework overwrite it.
 
 ## Conventions (must hold)
 
