@@ -32,6 +32,10 @@ jobs:
           echo "$COMMITS"
 
           BUMP="none"
+          # grep processes $COMMITS line by line even though it is piped as one multi-line
+          # string, so both the "^...!:" subject-line anchor and the bare "BREAKING CHANGE:"
+          # alternative correctly match anywhere in a commit's subject+body (%s%n%b), not just
+          # the first line. Verified with a synthetic multi-commit, multi-line body.
           if echo "$COMMITS" | grep -Eq '^[a-zA-Z]+(\(.+\))?!:|BREAKING CHANGE:'; then
             BUMP="major"
           elif echo "$COMMITS" | grep -Eq '^feat(\(.+\))?:'; then
@@ -81,6 +85,10 @@ jobs:
             git log $RANGE --format='- %s' | grep -Ev '^- (chore|docs|test|ci|refactor)(\(.+\))?:' || true
           } > /tmp/new-section.md
 
+          # Fallback for a missing/deleted CHANGELOG.md (e.g. fresh checkout mishap): awk below
+          # requires an existing input file, otherwise it fails fatally and aborts the step.
+          [ -f oopdi/CHANGELOG.md ] || printf '# Changelog\n\n' > oopdi/CHANGELOG.md
+
           awk -v newfile=/tmp/new-section.md '
             NR==1 {print; next}
             /^$/ && !inserted {print; while ((getline line < newfile) > 0) print line; print ""; inserted=1; next}
@@ -99,6 +107,9 @@ jobs:
           git add oopdi/pom.xml oopdi/CHANGELOG.md
           git commit -m "chore(release): v${NEW}"
           git tag "v${NEW}"
+          # OOPDI is intentionally released from main only (see AGENTS.md "Release Process");
+          # unlike sibling repos that release from the triggering branch, this push target is
+          # hardcoded on purpose and is not a bug.
           git push origin HEAD:main
           git push origin "v${NEW}"
           echo "tag_name=v${NEW}" >> "$GITHUB_OUTPUT"
