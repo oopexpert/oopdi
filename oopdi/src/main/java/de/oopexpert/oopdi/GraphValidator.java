@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -77,6 +78,37 @@ public final class GraphValidator {
 				.ifPresent(cause -> aggregated.addSuppressed(new RuntimeException(problem.text(), cause))));
 		return aggregated;
 	}
+
+	/**
+	 * Mirrors what {@code Field.set} accepts at runtime: reference equality, plus exact
+	 * boxing for primitives (a successfully parsed primitive value always arrives boxed
+	 * in the matching wrapper, so the field type's own wrapper is required — a foreign
+	 * boxed type such as {@code Long} for an {@code int} field fails here exactly as
+	 * {@code Field.set} fails at runtime with {@code FieldInjectionFailed}).
+	 *
+	 * <p>Package-visible for direct unit testing: pure, side-effect-free helper whose
+	 * correctness matrix (all 8 primitives, wrappers, {@code null}, mismatches) is
+	 * cheapest verified without a container.</p>
+	 */
+	static boolean isAssignableToField(Object value, Class<?> fieldType) {
+		if (value == null) {
+			return !fieldType.isPrimitive();
+		}
+		if (fieldType.isPrimitive()) {
+			return PRIMITIVE_TO_WRAPPER.get(fieldType).isInstance(value);
+		}
+		return fieldType.isInstance(value);
+	}
+
+	private static final Map<Class<?>, Class<?>> PRIMITIVE_TO_WRAPPER = Map.of(
+			boolean.class, Boolean.class,
+			byte.class, Byte.class,
+			char.class, Character.class,
+			short.class, Short.class,
+			int.class, Integer.class,
+			long.class, Long.class,
+			float.class, Float.class,
+			double.class, Double.class);
 
 	/**
 	 * Owns the mutable traversal state (chain, finished set, collected problems) together
@@ -423,20 +455,6 @@ public final class GraphValidator {
 
 		private void problem(String ownerName, String detail) {
 			problems.add(Problem.of("'%s': %s".formatted(ownerName, detail)));
-		}
-
-		/**
-		 * Mirrors what {@code Field.set} accepts at runtime: reference equality, plus boxing
-		 * for primitives (a successfully parsed primitive value always arrives boxed in the
-		 * matching wrapper, so no per-type table is needed here).
-		 *
-		 * <p>Known approximation (deferred to a later iteration): this returns {@code true}
-		 * for every primitive field, so a parsed value of the wrong primitive kind stays
-		 * silent here while the runtime {@code Field.set} fails with
-		 * {@code FieldInjectionFailed}. Validation is best-effort, not a proof.</p>
-		 */
-		private static boolean isAssignableToField(Object value, Class<?> fieldType) {
-			return fieldType.isInstance(value) || fieldType.isPrimitive();
 		}
 
 		private void problem(String ownerName, String detail, Throwable cause) {
