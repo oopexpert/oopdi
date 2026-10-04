@@ -2,7 +2,7 @@ package de.oopexpert.oopdi.resolver;
 
 import java.util.List;
 
-import de.oopexpert.oopdi.exception.CannotInject;
+import de.oopexpert.oopdi.exception.NoResolverFound;
 
 public final class DependencyResolverPipeline {
 
@@ -22,6 +22,6 @@ public final class DependencyResolverPipeline {
                 return resolver.resolve(point, context);
             }
         }
-        throw new CannotInject("No matching DependencyResolver found for injection point '%s' declared in '%s'.".formatted(point.getType().getName(), point.getDeclaringClass().getName()));
+        throw new NoResolverFound("No matching DependencyResolver found for injection point '%s' declared in '%s'.".formatted(point.getType().getName(), point.getDeclaringClass().getName()));
     }
 }

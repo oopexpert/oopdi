@@ -5,7 +5,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 import de.oopexpert.oopdi.annotation.Injectable;
-import de.oopexpert.oopdi.exception.CannotInject;
+import de.oopexpert.oopdi.exception.NotInjectableBean;
 import de.oopexpert.oopdi.proxy.RequestScopeManager;
 
 public enum Scope {
@@ -83,7 +83,7 @@ public enum Scope {
 
 	/**
 	 * Creates the real-object supplier for the given bean class, polymorphically per scope
-	 * (no switch statements): GLOBAL caches process-wide (container-bound via the proxy
+	 * (no switch statements): GLOBAL caches per proxy instance (container-bound via the proxy
 	 * registry, so container garbage collection releases it); THREAD, LOCAL and REQUEST
 	 * re-resolve on every call - THREAD through the canonical per-thread state in
 	 * {@code ScopedInstances} (deliberately no supplier-level {@code ThreadLocal}, which would
@@ -97,7 +97,7 @@ public enum Scope {
 	public static <X> Scope of(Class<X> c) {
 		Injectable injectable = c.getAnnotation(Injectable.class);
 		if (injectable == null) {
-			throw new CannotInject("Cannot determine scope of '%s': it is not annotated as 'Injectable'.".formatted(c.getName()));
+			throw new NotInjectableBean("Cannot determine scope of '%s': it is not annotated as 'Injectable'.".formatted(c.getName()));
 		}
 		return injectable.scope();
 	}

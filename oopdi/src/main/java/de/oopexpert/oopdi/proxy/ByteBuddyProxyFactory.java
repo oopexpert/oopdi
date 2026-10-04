@@ -7,7 +7,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
-import de.oopexpert.oopdi.exception.CannotInject;
+import de.oopexpert.oopdi.exception.BeanInstantiationFailed;
 import de.oopexpert.oopdi.metadata.MetadataRepository;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.description.modifier.Visibility;
@@ -78,9 +78,9 @@ public class ByteBuddyProxyFactory {
 			return proxyClass.getDeclaredConstructor(parameterTypes).newInstance(args);
 			// IllegalArgumentException included deliberately: ByteBuddy rejects what it cannot
 			// subclass (e.g. final classes) with an unchecked error during class generation;
-			// surface it as a descriptive CannotInject like every other proxy-creation failure.
+			// surface it as a descriptive BeanInstantiationFailed like every other proxy-creation failure.
 		} catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException | IllegalArgumentException e) {
-			throw new CannotInject("Failed to instantiate proxy for '%s'.".formatted(clazz.getName()), e);
+			throw new BeanInstantiationFailed("Failed to instantiate proxy for '%s'.".formatted(clazz.getName()), e);
 		}
 	}
 

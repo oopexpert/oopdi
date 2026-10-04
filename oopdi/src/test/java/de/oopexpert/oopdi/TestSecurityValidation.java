@@ -3,7 +3,9 @@ package de.oopexpert.oopdi;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import de.oopexpert.oopdi.exception.AbstractBean;
 import de.oopexpert.oopdi.exception.MultipleConstructors;
+import de.oopexpert.oopdi.exception.NotInjectableBean;
 import de.oopexpert.teststructure.ClassAbstractInjectableWithSideEffect;
 import de.oopexpert.teststructure.ClassFieldAccessibilityTarget;
 import de.oopexpert.teststructure.ClassMultipleConstructorsWithSideEffect;
@@ -25,7 +27,7 @@ class TestSecurityValidation {
 
         OOPDI<ClassNotInjectableWithSideEffect> oopdi = new OOPDI<>(ClassNotInjectableWithSideEffect.class);
 
-        RuntimeException ex = Assertions.assertThrows(RuntimeException.class,
+        RuntimeException ex = Assertions.assertThrows(NotInjectableBean.class,
             () -> oopdi.startup(),
             "Starting a container with a non-@Injectable root must throw before construction");
 
@@ -42,7 +44,7 @@ class TestSecurityValidation {
 
         OOPDI<ClassAbstractInjectableWithSideEffect> oopdi = new OOPDI<>(ClassAbstractInjectableWithSideEffect.class);
 
-        RuntimeException ex = Assertions.assertThrows(RuntimeException.class,
+        RuntimeException ex = Assertions.assertThrows(AbstractBean.class,
             () -> oopdi.startup(),
             "Starting a container with an abstract root must throw before construction");
 

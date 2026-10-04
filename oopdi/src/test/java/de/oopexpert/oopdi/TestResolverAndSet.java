@@ -118,7 +118,7 @@ class TestResolverAndSet {
 
         // Regression test: the type-name fallback only excluded "java."-prefixed types, so
         // javax.* types (outside that prefix) on unannotated fields were misdetected as
-        // injection points too, failing with CannotInject ("it is not annotated as
+        // injection points too, failing with NotInjectableBean ("it is not annotated as
         // 'Injectable'") instead of leaving the constructor-assigned value alone.
         OOPDI<ClassBeanWithJdkOutsideJavaPrefixField> oopdi = new OOPDI<>(ClassBeanWithJdkOutsideJavaPrefixField.class);
         oopdi.startup();

@@ -18,7 +18,7 @@ public final class InstanceDependencyResolver implements DependencyResolver {
 	 * (non-{@code java.*}) helper objects set in the constructor - e.g. {@code javax.swing.Timer}
 	 * (outside the "java." prefix) or a project-local non-{@code @Injectable} helper class -
 	 * were misdetected as injection points and either overwritten or rejected with
-	 * {@code CannotInject}.
+	 * {@code NotInjectableBean}.
 	 */
 	@Override
 	public boolean supports(InjectionPoint point) {

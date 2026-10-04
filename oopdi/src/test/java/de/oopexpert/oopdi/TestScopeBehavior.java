@@ -5,7 +5,8 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-import de.oopexpert.oopdi.exception.CannotInject;
+import de.oopexpert.oopdi.exception.ImmediateScopeMisconfiguration;
+import de.oopexpert.oopdi.exception.NotInjectableBean;
 import de.oopexpert.teststructure.ClassA;
 import de.oopexpert.teststructure.ClassB;
 import de.oopexpert.teststructure.ClassB1;
@@ -163,7 +164,7 @@ class TestScopeBehavior {
         oopdi.startup();
         ClassImmediateThreadMisconfig instance = oopdi.getInstance(ClassImmediateThreadMisconfig.class);
 
-        RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::ping,
+        RuntimeException ex = Assertions.assertThrows(ImmediateScopeMisconfiguration.class, instance::ping,
             "THREAD scope with immediate=true should be rejected");
         Assertions.assertTrue(ex.getMessage().contains("Misconfiguration"));
 
@@ -176,7 +177,7 @@ class TestScopeBehavior {
         oopdi.startup();
         ClassImmediateLocalMisconfig instance = oopdi.getInstance(ClassImmediateLocalMisconfig.class);
 
-        RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::ping,
+        RuntimeException ex = Assertions.assertThrows(ImmediateScopeMisconfiguration.class, instance::ping,
             "LOCAL scope with immediate=true should be rejected");
         Assertions.assertTrue(ex.getMessage().contains("Misconfiguration"));
 
@@ -189,7 +190,7 @@ class TestScopeBehavior {
         oopdi.startup();
         ClassImmediateRequestMisconfig instance = oopdi.getInstance(ClassImmediateRequestMisconfig.class);
 
-        RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::ping,
+        RuntimeException ex = Assertions.assertThrows(ImmediateScopeMisconfiguration.class, instance::ping,
             "REQUEST scope with immediate=true should be rejected");
         Assertions.assertTrue(ex.getMessage().contains("Misconfiguration"));
 
@@ -236,7 +237,7 @@ class TestScopeBehavior {
     @Test
     void testScopeOfNonInjectableClassFailsDescriptively() {
 
-        CannotInject ex = Assertions.assertThrows(CannotInject.class, () -> Scope.of(ClassB3.class),
+        NotInjectableBean ex = Assertions.assertThrows(NotInjectableBean.class, () -> Scope.of(ClassB3.class),
             "Scope lookup on a non-@Injectable class must fail explicitly instead of NullPointerException");
 
         Assertions.assertTrue(ex.getMessage().contains(ClassB3.class.getName()),

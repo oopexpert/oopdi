@@ -9,9 +9,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
-import de.oopexpert.oopdi.exception.CannotInject;
 import de.oopexpert.oopdi.exception.ContainerShutdown;
 import de.oopexpert.oopdi.exception.DestructionFailed;
+import de.oopexpert.oopdi.exception.FieldInjectionFailed;
 import de.oopexpert.oopdi.metadata.ClassMetadata;
 import de.oopexpert.oopdi.metadata.MetadataRepository;
 import de.oopexpert.oopdi.resolver.DependencyResolutionContext;
@@ -144,7 +144,7 @@ public class Context<T> implements InternalResolutionContext {
 		} catch (IllegalAccessException | IllegalArgumentException e) {
 			// IllegalArgumentException covers wrong-type values reaching a field
 			// (e.g. an unparsable custom type falling back to String).
-			throw new CannotInject("Field injection failed for field '%s' declared in '%s'.".formatted(field.getName(), point.getDeclaringClass().getName()), e);
+			throw new FieldInjectionFailed("Field injection failed for field '%s' declared in '%s'.".formatted(field.getName(), point.getDeclaringClass().getName()), e);
 		}
 	}
 
@@ -156,7 +156,7 @@ public class Context<T> implements InternalResolutionContext {
 	 * Dry-validates the bean graph reachable from the given root class without creating a
 	 * single instance. Structural problems (eligibility, constructor rules, unresolvable
 	 * dependencies, missing variables, cycles, lifecycle cardinalities) are aggregated into
-	 * one {@code CannotInject}; a silent return means the graph would resolve.
+	 * one {@code InvalidBeanGraph}; a silent return means the graph would resolve.
 	 */
 	void validateGraph(Class<?> rootClazz) {
 		new GraphValidator(instanceFactory, classesResolver, metadataRepository, resolverPipeline, lifecycleProcessor)

@@ -52,7 +52,7 @@ mvn test
 - `OOPDI.validate()` dry-validates the reachable bean graph (no instantiation, no side
   effects) via `GraphValidator`, reusing runtime checks (`InstanceFactory` eligibility,
   shared `VariableDependencyResolver.requireVariableValue`); all problems aggregated into
-  one `CannotInject`.
+  one `InvalidBeanGraph` (standalone dry-run phase; findings via `getProblems()`).
   Scope state is container-local for every scope (REQUEST via per-container
   `RequestScopeManager`, never static).
 - Per-class locks for same-bean creation; shared caches are synchronized maps with snapshot
@@ -68,7 +68,7 @@ mvn test
   `ParameterInjectionPoint` (constructor params, per README). Every declared field becomes a
   `FieldInjectionPoint` regardless of annotations (`MetadataRepository.collectFields`), so
   before this fix any unannotated field of a `javax.*` type or a project-local
-  non-`@Injectable` type was misdetected and either threw `CannotInject` or had its
+  non-`@Injectable` type was misdetected and either threw `NotInjectableBean` or had its
   constructor-assigned value silently overwritten by `Context.injectField`'s unconditional
   `field.set`. `Context.injectField` itself still has no null/final guard — annotating a
   field is the documented opt-in contract for letting the framework overwrite it.
@@ -81,11 +81,18 @@ mvn test
   `workflow_dispatch`), commits version bump directly to `main` (no PR), publishes to GitHub
   Packages (`de.oopexpert.oopdi:oopdi-core`).
 - Error messages via `String.formatted()`, never `+` (stable API, no string templates).
-- Failure taxonomy: `CannotInject` (eligibility/config), `DestructionFailed` (aggregation),
+- Failure taxonomy: dedicated `RuntimeException` types per cause — eligibility
+  (`NotInjectableBean`, `AbstractBean`, `NoAccessibleConstructor`), scope config
+  (`ImmediateScopeMisconfiguration`), creation (`BeanInstantiationFailed`,
+  `ConstructorCycle` via `UnderConstruction`, `FieldInjectionFailed`, `NoResolverFound`),
+  variables (`MissingVariable`, `InvalidVariableFormat`, `OptionalPrimitiveVariable`),
+  dry-run aggregate (`InvalidBeanGraph`);
   `MultipleConstructors`/`MultiplePostConstructMethods`/`MultiplePreDestroyMethods`
-  (cardinalities), `ClasspathScanFailed` (infra), `WarmupFailed`, `ContainerShutdown`,
+  (cardinalities), `PostConstructInvocationFailed`/`PreDestroyInvocationFailed`
+  (lifecycle invocation, aggregated in `DestructionFailed` at teardown),
+  `ClasspathScanFailed` (infra), `WarmupFailed`, `ContainerShutdown`,
   `ContainerNotStarted` (pre-start access), `NoRequestScopeAvailable`,
-  `UnderConstruction` (internal, surfaced as `CannotInject`).
+  `UnderConstruction` (internal, surfaced as `ConstructorCycle`).
 - English-only user messages. No switch statements (polymorphic `Scope`).
 - API boundary: public contract is `OOPDI`, annotations, `DependencyResolutionContext`,
   exceptions, `MetadataMode`/`ContainerStatus`/`WarmupStatus`. Casts to internal types and

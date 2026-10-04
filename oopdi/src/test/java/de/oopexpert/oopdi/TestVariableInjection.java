@@ -5,7 +5,9 @@ import java.util.Map;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-import de.oopexpert.oopdi.exception.CannotInject;
+import de.oopexpert.oopdi.exception.InvalidVariableFormat;
+import de.oopexpert.oopdi.exception.MissingVariable;
+import de.oopexpert.oopdi.exception.OptionalPrimitiveVariable;
 import de.oopexpert.teststructure.ClassA;
 import de.oopexpert.teststructure.ClassMissingVar;
 import de.oopexpert.teststructure.ClassOptionalPrimitiveVar;
@@ -66,7 +68,7 @@ class TestVariableInjection {
 
         ClassMissingVar instance = oopdi.getInstance(ClassMissingVar.class);
 
-        RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::getMissingValue);
+        RuntimeException ex = Assertions.assertThrows(MissingVariable.class, instance::getMissingValue);
 
         Assertions.assertTrue(
             ex.getMessage().contains("definitelyNotSetKey_12345"),
@@ -94,7 +96,7 @@ class TestVariableInjection {
         OOPDI<ClassOptionalPrimitiveVar> oopdi = new OOPDI<>(ClassOptionalPrimitiveVar.class);
         oopdi.startup();
 
-        CannotInject ex = Assertions.assertThrows(CannotInject.class,
+        OptionalPrimitiveVariable ex = Assertions.assertThrows(OptionalPrimitiveVariable.class,
             () -> oopdi.getInstance(ClassOptionalPrimitiveVar.class).getOptionalInt(),
             "optional=true with missing key on a primitive field must fail explicitly");
 
@@ -182,7 +184,7 @@ class TestVariableInjection {
             oopdi.startup();
             ClassVariableInvalidFormat instance = oopdi.getInstance(ClassVariableInvalidFormat.class);
 
-            RuntimeException ex = Assertions.assertThrows(RuntimeException.class, instance::getInvalidInt,
+            RuntimeException ex = Assertions.assertThrows(InvalidVariableFormat.class, instance::getInvalidInt,
                 "Invalid numeric values should fail during injection");
             Assertions.assertTrue(ex.getCause() instanceof NumberFormatException,
                 "NumberFormatException should be preserved as the cause");

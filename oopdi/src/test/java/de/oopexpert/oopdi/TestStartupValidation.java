@@ -5,7 +5,10 @@ import java.util.Map;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-import de.oopexpert.oopdi.exception.CannotInject;
+import de.oopexpert.oopdi.exception.BeanInstantiationFailed;
+import de.oopexpert.oopdi.exception.FieldInjectionFailed;
+import de.oopexpert.oopdi.exception.InvalidBeanGraph;
+import de.oopexpert.oopdi.exception.InvalidVariableFormat;
 import de.oopexpert.teststructure.ClassBrokenFormatVar;
 import de.oopexpert.teststructure.ClassBrokenGraphRoot;
 import de.oopexpert.teststructure.ClassBrokenProxiabilityRoot;
@@ -21,7 +24,7 @@ import de.oopexpert.teststructure.ClassUuidVar;
 /**
  * Verifies opt-in startup validation ({@link OOPDI#validate()}): a dry run over the reachable
  * bean graph that creates nothing (no constructor runs, nothing injected) and aggregates every
- * structural wiring problem into a single {@code CannotInject} instead of failing
+ * structural wiring problem into a single {@code InvalidBeanGraph} instead of failing
  * request-by-request at runtime.
  */
 class TestStartupValidation {
@@ -31,7 +34,7 @@ class TestStartupValidation {
         OOPDI<ClassBrokenGraphRoot> oopdi = new OOPDI<>(ClassBrokenGraphRoot.class);
         oopdi.startup();
 
-        CannotInject ex = Assertions.assertThrows(CannotInject.class, oopdi::validate,
+        InvalidBeanGraph ex = Assertions.assertThrows(InvalidBeanGraph.class, oopdi::validate,
             "A broken wiring graph must fail startup validation");
 
         String message = ex.getMessage();
@@ -68,7 +71,7 @@ class TestStartupValidation {
         OOPDI<ClassBrokenSetRoot> oopdi = new OOPDI<>(ClassBrokenSetRoot.class);
         oopdi.startup();
 
-        CannotInject ex = Assertions.assertThrows(CannotInject.class, oopdi::validate,
+        InvalidBeanGraph ex = Assertions.assertThrows(InvalidBeanGraph.class, oopdi::validate,
             "A broken @InjectSet element subgraph must fail startup validation");
 
         Assertions.assertTrue(ex.getMessage().contains("definitelyNotSetKey_brokenSetElement"),
@@ -80,7 +83,7 @@ class TestStartupValidation {
         OOPDI<ClassImmediateLocalMisconfig> oopdi = new OOPDI<>(ClassImmediateLocalMisconfig.class);
         oopdi.startup();
 
-        CannotInject ex = Assertions.assertThrows(CannotInject.class, oopdi::validate,
+        InvalidBeanGraph ex = Assertions.assertThrows(InvalidBeanGraph.class, oopdi::validate,
             "immediate=true on a non-GLOBAL bean must fail startup validation");
 
         Assertions.assertTrue(ex.getMessage().contains("Misconfiguration"),
@@ -92,12 +95,13 @@ class TestStartupValidation {
         OOPDI<ClassBrokenFormatVar> oopdi = new OOPDI<>(ClassBrokenFormatVar.class);
         oopdi.startup();
 
-        CannotInject ex = Assertions.assertThrows(CannotInject.class, oopdi::validate,
+        InvalidBeanGraph ex = Assertions.assertThrows(InvalidBeanGraph.class, oopdi::validate,
             "An unparsable variable value must fail startup validation");
 
-        Assertions.assertTrue(ex.getMessage().contains("definitelyNotSetKey_brokenFormat")
-                && ex.getMessage().contains("notANumber"),
-            "Key and offending value must be reported, but was: " + ex.getMessage());
+        Assertions.assertTrue(ex.getMessage().contains("definitelyNotSetKey_brokenFormat"),
+            "Key must be reported, but was: " + ex.getMessage());
+        Assertions.assertFalse(ex.getMessage().contains("notANumber"),
+            "Offending value must not leak into the message, but was: " + ex.getMessage());
     }
 
     @Test
@@ -127,17 +131,17 @@ class TestStartupValidation {
         OOPDI<ClassBrokenProxiabilityRoot> oopdi = new OOPDI<>(ClassBrokenProxiabilityRoot.class);
         oopdi.startup();
 
-        CannotInject validationFailure = Assertions.assertThrows(CannotInject.class, oopdi::validate,
+        InvalidBeanGraph validationFailure = Assertions.assertThrows(InvalidBeanGraph.class, oopdi::validate,
             "A final managed class must fail startup validation");
         Assertions.assertTrue(validationFailure.getMessage().contains(ClassFinalBean.class.getName())
                 && validationFailure.getMessage().contains("final"),
             "The final class must be named as unproxiable, but was: " + validationFailure.getMessage());
 
         // Startup parity through the direct root: ByteBuddy cannot subclass it either —
-        // but as CannotInject, not raw IllegalArgumentException. Explicit startup moves root
+        // but as BeanInstantiationFailed, not raw IllegalArgumentException. Explicit startup moves root
         // proxy creation (and its failure) from first bean access to startup().
         OOPDI<ClassFinalBean> direct = new OOPDI<>(ClassFinalBean.class);
-        Assertions.assertThrows(CannotInject.class, () -> direct.startup(),
+        Assertions.assertThrows(BeanInstantiationFailed.class, () -> direct.startup(),
             "A final managed class must fail startup descriptively, too");
     }
 
@@ -146,14 +150,14 @@ class TestStartupValidation {
         OOPDI<ClassBrokenProxiabilityRoot> oopdi = new OOPDI<>(ClassBrokenProxiabilityRoot.class);
         oopdi.startup();
 
-        CannotInject validationFailure = Assertions.assertThrows(CannotInject.class, oopdi::validate,
+        InvalidBeanGraph validationFailure = Assertions.assertThrows(InvalidBeanGraph.class, oopdi::validate,
             "A private primary constructor must fail startup validation");
         Assertions.assertTrue(validationFailure.getMessage().contains(ClassPrivateCtor.class.getName())
                 && validationFailure.getMessage().contains("private"),
             "The constructor visibility must be named, but was: " + validationFailure.getMessage());
 
         OOPDI<ClassPrivateCtor> direct = new OOPDI<>(ClassPrivateCtor.class);
-        Assertions.assertThrows(CannotInject.class, () -> direct.startup(),
+        Assertions.assertThrows(BeanInstantiationFailed.class, () -> direct.startup(),
             "A private primary constructor must fail startup descriptively, too");
     }
 
@@ -164,12 +168,12 @@ class TestStartupValidation {
             OOPDI<ClassEmptyCharVar> oopdi = new OOPDI<>(ClassEmptyCharVar.class);
             oopdi.startup();
 
-            CannotInject validationFailure = Assertions.assertThrows(CannotInject.class, oopdi::validate,
+            InvalidBeanGraph validationFailure = Assertions.assertThrows(InvalidBeanGraph.class, oopdi::validate,
                 "An empty variable value for a char field must fail startup validation");
             Assertions.assertTrue(validationFailure.getMessage().contains("definitelySetKey_emptyChar"),
                 "The key must be named, but was: " + validationFailure.getMessage());
 
-            Assertions.assertThrows(CannotInject.class, () -> oopdi.getInstance(ClassEmptyCharVar.class).getValue(),
+            Assertions.assertThrows(InvalidVariableFormat.class, () -> oopdi.getInstance(ClassEmptyCharVar.class).getValue(),
                 "An empty variable value for a char field must fail resolution descriptively at runtime, too");
         }
     }
@@ -179,12 +183,40 @@ class TestStartupValidation {
         OOPDI<ClassUuidVar> oopdi = new OOPDI<>(ClassUuidVar.class);
         oopdi.startup();
 
-        CannotInject validationFailure = Assertions.assertThrows(CannotInject.class, oopdi::validate,
+        InvalidBeanGraph validationFailure = Assertions.assertThrows(InvalidBeanGraph.class, oopdi::validate,
             "A variable value of the wrong type must fail startup validation");
         Assertions.assertTrue(validationFailure.getMessage().contains("not assignable"),
             "The assignability problem must be named, but was: " + validationFailure.getMessage());
 
-        Assertions.assertThrows(CannotInject.class, () -> oopdi.getInstance(ClassUuidVar.class).getId(),
+        Assertions.assertThrows(FieldInjectionFailed.class, () -> oopdi.getInstance(ClassUuidVar.class).getId(),
             "A variable value of the wrong type must fail resolution descriptively at runtime, too");
+    }
+
+    @Test
+    void testValidationFailureExposesProblemsStructurally() {
+        OOPDI<ClassBrokenGraphRoot> oopdi = new OOPDI<>(ClassBrokenGraphRoot.class);
+        oopdi.startup();
+
+        InvalidBeanGraph ex = Assertions.assertThrows(InvalidBeanGraph.class, oopdi::validate,
+            "A broken wiring graph must fail startup validation");
+
+        Assertions.assertEquals(3, ex.getProblems().size(),
+            "Exactly the three independent problems must be exposed structurally, but were: " + ex.getProblems());
+        Assertions.assertTrue(ex.getProblems().stream().anyMatch(p -> p.contains("definitelyNotSetKey_brokenGraph")),
+            "Missing variable key must be exposed structurally, but were: " + ex.getProblems());
+    }
+
+    @Test
+    void testValidationFailureTypeDiffersFromRuntimeFailureTypes() {
+        OOPDI<ClassBrokenGraphRoot> oopdi = new OOPDI<>(ClassBrokenGraphRoot.class);
+        oopdi.startup();
+
+        InvalidBeanGraph ex = Assertions.assertThrows(InvalidBeanGraph.class, oopdi::validate,
+            "A broken wiring graph must fail startup validation");
+
+        Assertions.assertFalse(BeanInstantiationFailed.class.isInstance(ex),
+            "Dry-run validation failure must stay phase-separated from runtime injection failures");
+        Assertions.assertFalse(FieldInjectionFailed.class.isInstance(ex),
+            "Dry-run validation failure must stay phase-separated from runtime injection failures");
     }
 }

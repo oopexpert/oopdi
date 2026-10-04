@@ -14,9 +14,12 @@ import java.util.Set;
 
 import de.oopexpert.oopdi.annotation.InjectSet;
 import de.oopexpert.oopdi.annotation.InjectVariable;
-import de.oopexpert.oopdi.exception.CannotInject;
+import de.oopexpert.oopdi.exception.ImmediateScopeMisconfiguration;
+import de.oopexpert.oopdi.exception.InvalidBeanGraph;
+import de.oopexpert.oopdi.exception.MissingVariable;
 import de.oopexpert.oopdi.exception.MultiplePostConstructMethods;
 import de.oopexpert.oopdi.exception.MultiplePreDestroyMethods;
+import de.oopexpert.oopdi.exception.OptionalPrimitiveVariable;
 import de.oopexpert.oopdi.metadata.ClassMetadata;
 import de.oopexpert.oopdi.metadata.MetadataRepository;
 import de.oopexpert.oopdi.parser.TypeParserRegistry;
@@ -29,12 +32,13 @@ import de.oopexpert.oopdi.resolver.impl.VariableDependencyResolver;
  * instance: no constructor runs, no field is set, no lifecycle method fires. Every structural
  * problem found (eligibility, constructor rules, unresolvable dependencies, missing variables,
  * empty filtered sets, cycles, lifecycle cardinalities) is collected and reported together as
- * one {@link CannotInject}, so a single startup check surfaces the whole wiring state instead
+ * one {@link InvalidBeanGraph}, so a single startup check surfaces the whole wiring state instead
  * of failing request-by-request at runtime.
  *
  * <p>Entry point for applications is {@link OOPDI#validate()}. All checks mirror what the
- * corresponding runtime path would do (same components, same messages), so validation can
- * neither pass something the runtime rejects nor reject something the runtime accepts.</p>
+ * corresponding runtime path would do on a best-effort basis (same helpers where possible);
+ * messages may differ in details such as cause types, so validation is an approximation,
+ * not a proof of runtime behavior.</p>
  */
 public final class GraphValidator {
 
@@ -58,18 +62,19 @@ public final class GraphValidator {
 		Objects.requireNonNull(rootClazz, "rootClazz must not be null");
 		Traversal traversal = new Traversal(instanceFactory, classesResolver, metadataRepository, lifecycleProcessor, resolverPipeline).visit(rootClazz);
 		if (!traversal.problems.isEmpty()) {
-			throw buildCannotInjectException(traversal);
+			throw buildInvalidBeanGraphException(traversal);
 		}
 	}
 
-	private CannotInject buildCannotInjectException(Traversal traversal) {
-		CannotInject aggregated = new CannotInject("Startup validation failed with %d problem(s):\n- %s".formatted(
-				traversal.problems.size(), String.join("\n- ", traversal.problems.stream().map(Traversal.Problem::text).toList())));
+	private InvalidBeanGraph buildInvalidBeanGraphException(Traversal traversal) {
+		List<String> problemTexts = traversal.problems.stream().map(Traversal.Problem::text).toList();
+		InvalidBeanGraph aggregated = new InvalidBeanGraph("Startup validation failed with %d problem(s):\n- %s".formatted(
+				problemTexts.size(), String.join("\n- ", problemTexts)), problemTexts);
 		// Each cause stays attached to its own problem line (labeled slot carrying the
 		// original as cause chain), so the mapping survives aggregation instead of dissolving
 		// into an unlabeled bag.
 		traversal.problems.forEach(problem -> problem.cause()
-				.ifPresent(cause -> aggregated.addSuppressed(new CannotInject(problem.text(), cause))));
+				.ifPresent(cause -> aggregated.addSuppressed(new RuntimeException(problem.text(), cause))));
 		return aggregated;
 	}
 
@@ -209,7 +214,7 @@ public final class GraphValidator {
 				try {
 					// Mirrors Context.getOrCreate second: immediate-configuration check.
 					instanceFactory.checkImmediateInstantiationConfiguration(requested);
-				} catch (CannotInject e) {
+				} catch (ImmediateScopeMisconfiguration e) {
 					problem(requested, e);
 				}
 				// Mirrors InstanceFactory.getOrCreateInjectable first step: resolve the relevant
@@ -357,7 +362,7 @@ public final class GraphValidator {
 				if (value != null) {
 					checkVariableValue(owner, point, annotation, value);
 				}
-			} catch (CannotInject e) {
+			} catch (MissingVariable | OptionalPrimitiveVariable e) {
 				problem(owner, e);
 			}
 		}
@@ -368,11 +373,13 @@ public final class GraphValidator {
 			} catch (RuntimeException e) {
 				// Deliberately wider than IllegalArgumentException (mirrored below in the
 				// runtime resolver): parsers like charAt(0) fail with other runtime
-				// exceptions on degenerate input such as empty strings.
-				problem(owner.getName(), "Cannot inject variable: invalid format for key '%s' in source %s for field in '%s' (value '%s').".formatted(
+				// exceptions on degenerate input such as empty strings. The offending
+				// value itself is deliberately not included in the message (it may be
+				// a secret); the runtime message carries no value either.
+				problem(owner.getName(), "Cannot inject variable: invalid format for key '%s' in source %s for field in '%s'.".formatted(
 						annotation.key(),
 						annotation.source().name(),
-						owner.getName(), value), e);
+						owner.getName()), e);
 			}
 		}
 
@@ -422,6 +429,11 @@ public final class GraphValidator {
 		 * Mirrors what {@code Field.set} accepts at runtime: reference equality, plus boxing
 		 * for primitives (a successfully parsed primitive value always arrives boxed in the
 		 * matching wrapper, so no per-type table is needed here).
+		 *
+		 * <p>Known approximation (deferred to a later iteration): this returns {@code true}
+		 * for every primitive field, so a parsed value of the wrong primitive kind stays
+		 * silent here while the runtime {@code Field.set} fails with
+		 * {@code FieldInjectionFailed}. Validation is best-effort, not a proof.</p>
 		 */
 		private static boolean isAssignableToField(Object value, Class<?> fieldType) {
 			return fieldType.isInstance(value) || fieldType.isPrimitive();

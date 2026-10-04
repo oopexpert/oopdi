@@ -136,7 +136,7 @@ private int poolSize;
 | `SYSTEM` | `System.getenv(key)` |
 | `PARAMETER` | `System.getProperty(key)` |
 
-Supported field types for automatic conversion: `String`, `int`/`Integer`, `long`/`Long`, `short`/`Short`, `float`/`Float`, `double`/`Double`. For any other type the raw `String` value is assigned.
+Supported field types for automatic conversion: `String`, `boolean`/`Boolean`, `byte`/`Byte`, `char`/`Character`, `int`/`Integer`, `long`/`Long`, `short`/`Short`, `float`/`Float`, `double`/`Double`. For any other type the raw `String` value is assigned.
 
 ### `@PostConstruct`
 
@@ -149,7 +149,7 @@ public void init() {
 }
 ```
 
-Exactly one `@PostConstruct` method per class is permitted. Declaring more than one throws `MultiplePostConstructMethodsException`.
+Exactly one `@PostConstruct` method per class hierarchy is permitted. Declaring more than one throws `MultiplePostConstructMethods`.
 
 ## Scoping
 
@@ -190,7 +190,7 @@ public class TransientProcessor { ... }
 
 ### Request Scope (`Scope.REQUEST`)
 
-One instance is created per outermost proxy method call on the current thread, and that same instance is reused for all nested proxy calls within that call chain. When the outermost call returns, the instance is discarded.
+One instance is created per outermost proxy method call on the current thread, and that same instance is reused for all nested proxy calls within that call chain. When the outermost call returns, the instance is destroyed (`@PreDestroy` runs, best-effort) — not merely dropped.
 
 "Request" is not tied to HTTP — it maps to any logical unit of work initiated by a single entry into the proxy. `immediate = true` is not compatible with `REQUEST` scope.
 
@@ -274,7 +274,7 @@ All proxy calls within a single outermost call therefore share one instance of t
 
 ### Single @PostConstruct Method
 
-Exactly one method per class may carry `@PostConstruct`. The method may declare parameters — each parameter is resolved as a managed bean and injected at call time, following the same rules as constructor parameter injection.
+Exactly one method per class hierarchy may carry `@PostConstruct`. The method may declare parameters — each parameter is resolved as a managed bean and injected at call time, following the same rules as constructor parameter injection.
 
 ```java
 @Injectable
@@ -290,13 +290,13 @@ public class CacheManager {
 }
 ```
 
-### MultiplePostConstructMethodsException
+### MultiplePostConstructMethods
 
-If more than one method in a class is annotated with `@PostConstruct`, the framework throws `MultiplePostConstructMethodsException` at initialization time. Ensure only a single method carries this annotation per class.
+If more than one method in a class hierarchy is annotated with `@PostConstruct`, the framework throws `MultiplePostConstructMethods` at initialization time. Ensure only a single method carries this annotation per class hierarchy.
 
 ## Shutdown with @PreDestroy
 
-A single `@PreDestroy` method per class hierarchy (no parameters) declares cleanup logic. Call `oopdi.shutdown()` (or `close()`) once at application teardown: every managed instance is destroyed in reverse creation order, best-effort — a failing cleanup does not prevent the remaining instances from being destroyed; the individual failures are aggregated on the thrown error. Shutdown is idempotent and observable via `oopdi.getStatus()` (lifecycle: `NOT_STARTED` → `ACTIVE` → `SHUTTING_DOWN` → `SHUTDOWN`/`FAILED`; shutdown before startup is a neutral no-op). After shutdown has started, no new beans are created anymore: requests fail fast with `ContainerShutdown` instead of producing instances that could never be destroyed again (already-resolved beans stay readable from their scope cache).
+A single `@PreDestroy` method per class hierarchy (no parameters) declares cleanup logic. Call `oopdi.shutdown()` (or `close()`) once at application teardown: every GLOBAL/THREAD instance is destroyed in reverse creation order, best-effort — a failing cleanup does not prevent the remaining instances from being destroyed; the individual failures are aggregated on the thrown error (REQUEST beans were already destroyed at their chain end, LOCAL beans are never cached). Shutdown is idempotent and observable via `oopdi.getStatus()` (lifecycle: `NOT_STARTED` → `ACTIVE` → `SHUTTING_DOWN` → `SHUTDOWN`/`FAILED`; shutdown before startup is a neutral no-op). After shutdown has started, no new beans are created anymore: requests fail fast with `ContainerShutdown` instead of producing instances that could never be destroyed again (already-resolved beans stay readable from their scope cache).
 
 REQUEST-scoped beans do not wait for shutdown: they are destroyed when their call chain ends, in reverse creation order with the same best-effort semantics (a failing request-end cleanup is reported without hiding the call's own outcome). LOCAL-scoped beans are call-transient and never cached, so there is nothing to destroy for them — intentionally no `@PreDestroy` support for LOCAL.
 
@@ -308,14 +308,16 @@ Eligibility, constructor rules, `immediate` configuration, resolvable constructo
 dependencies, `@InjectSet` hints including element subgraphs (under the container's active profiles),
 variable presence *and* parsability, and lifecycle cardinalities are checked; only loops consisting
 solely of constructor edges are reported as cycles (field-only loops resolve at runtime and stay
-silent). All problems found are aggregated into a single `CannotInject` so one boot run shows the
+silent). All problems found are aggregated into a single `InvalidBeanGraph` (with the
+individual findings exposed via `getProblems()` and per-problem causes as suppressed exceptions)
+so one boot run shows the
 whole wiring state; a silent return means the graph would resolve at runtime. Nothing about normal
 resolution changes for applications that never call it.
 
 ```java
 OOPDI<AppConfig> oopdi = new OOPDI<>(AppConfig.class);
 oopdi.startup();
-oopdi.validate(); // throws CannotInject listing every wiring problem, or returns silently
+oopdi.validate(); // throws InvalidBeanGraph listing every wiring problem, or returns silently
 ```
 
 ## Usage Guidelines
@@ -349,7 +351,7 @@ The supported public contract consists of the `OOPDI` entry point, the annotatio
 
 ### Circular Dependencies
 
-Constructor injection cycles are detected at instantiation time. If class A's constructor requires B and B's constructor requires A, the framework throws `CannotInject` with a message identifying the cycle.
+Constructor injection cycles are detected at instantiation time. If class A's constructor requires B and B's constructor requires A, the framework throws `ConstructorCycle` (caused by the internal `UnderConstruction` sentinel) with a message identifying the cycle.
 
 Field injection does not produce construction cycles because the real object is instantiated before its fields are processed. A circular field-injection graph is therefore safe.
 
@@ -378,11 +380,24 @@ public class InMemoryDataSource extends DataSource { ... }
 | `NoClassesLeftAfterFiltering` | No non-abstract `@Injectable` subclass found for a requested type after profile filtering. |
 | `MultipleClassesLeftAfterFiltering` | More than one concrete `@Injectable` subclass matched after profile filtering. |
 | `MultipleConstructors` | A managed class declares more than one constructor. |
-| `MultiplePostConstructMethods` | A class declares more than one `@PostConstruct` method. |
+| `MultiplePostConstructMethods` | A class hierarchy declares more than one `@PostConstruct` method. |
 | `MultiplePreDestroyMethods` | A class hierarchy declares more than one `@PreDestroy` method. |
-| `CannotInject` | A field, constructor, or variable dependency could not be injected — typically wraps `NoClassesLeftAfterFiltering`, `MultipleClassesLeftAfterFiltering`, a constructor cycle, a missing/invalid `@InjectVariable` value, or an eligibility/scope misconfiguration (abstract class, non-`@Injectable` class, `immediate=true` on a non-GLOBAL scope). |
-| `NoRequestScopeAvailable` | A REQUEST-scoped bean's method was called outside any proxy call chain (i.e. directly on the real object). |
-| `UnderConstruction` | Internal sentinel for constructor cycle detection; surfaced as `CannotInject`. |
+| `NotInjectableBean` | A class without `@Injectable` was requested (e.g. `Scope.of` on a plain class). |
+| `AbstractBean` | A managed class is abstract and cannot be instantiated. |
+| `NoAccessibleConstructor` | No accessible primary constructor found. |
+| `ImmediateScopeMisconfiguration` | `immediate=true` on a non-GLOBAL scope (only `GLOBAL` allowed). |
+| `ConstructorCycle` | Constructor injection cycle, caused by the internal `UnderConstruction` sentinel. |
+| `BeanInstantiationFailed` | Reflective instantiation or proxy creation failed (wraps the cause). |
+| `FieldInjectionFailed` | `Field.set` failed during field injection (wraps the cause). |
+| `NoResolverFound` | No `DependencyResolver` matches the injection point. |
+| `MissingVariable` | `@InjectVariable` key not found and neither `optional` nor `defaultValue` applies. |
+| `InvalidVariableFormat` | `@InjectVariable` value present but not parsable (wraps the parser cause). |
+| `OptionalPrimitiveVariable` | `@InjectVariable(optional=true)` with missing key on a primitive field (cannot hold `null`; use `defaultValue` or a boxed type). |
+| `PostConstructInvocationFailed` | A `@PostConstruct` method threw during invocation (wraps the cause). |
+| `PreDestroyInvocationFailed` | A `@PreDestroy` method threw during invocation (wraps the cause; aggregated in `DestructionFailed`). |
+| `NoRequestScopeAvailable` | A REQUEST-scoped bean was resolved while no proxy call chain is active on this thread. |
+| `UnderConstruction` | Internal sentinel for constructor cycle detection; surfaced as `ConstructorCycle`. |
+| `InvalidBeanGraph` | Dry-run startup validation (`OOPDI.validate()`) found structural wiring problems; aggregates all findings (exposed via `getProblems()`, per-problem causes suppressed). Standalone phase, separate from the runtime failures above. |
 | `ContainerShutdown` | A bean was requested after the container's shutdown began. |
 | `DestructionFailed` | One or more `@PreDestroy` methods failed during `shutdown()` or at REQUEST-chain end; destruction still completed best-effort and the individual failures are attached as suppressed exceptions. |
 | `ClasspathScanFailed` | The classpath itself could not be scanned (unreadable entries, I/O failure) — an infrastructure problem, distinct from `NoClassesLeftAfterFiltering`/`MultipleClassesLeftAfterFiltering`, which report a completed scan with no/ambiguous results. |

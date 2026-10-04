@@ -27,8 +27,9 @@ und garantiert das aktuelle Verhalten widerspiegeln.
 
 Jedes verwaltete Bean wird beim Erstellen in einen **Byte-Buddy-Subclass-Proxy** verpackt. Aufrufer
 halten immer eine Referenz auf den Proxy, nie auf das reale Objekt. Der Proxy löst anhand des
-konfigurierten `Scope` die passende reale Instanz auf und delegiert an sie — `GLOBAL` und `THREAD`
-cachen dabei das einmal aufgelöste reale Objekt (keine erneute Auflösung pro Aufruf), `LOCAL` und
+konfigurierten `Scope` die passende reale Instanz auf und delegiert an sie — nur `GLOBAL`
+cacht das einmal aufgelöste reale Objekt im Proxy-Supplier (keine erneute Auflösung pro
+Aufruf); `THREAD` cacht ausschließlich container-lokal in `ScopedInstances`, `LOCAL` und
 `REQUEST` lösen bewusst bei jedem Aufruf bzw. jeder Kette neu auf. Die generierte Proxy-*Klasse*
 wird pro Bean-Klasse nur einmal erzeugt und über alle Container geteilt; der container-spezifische
 Zustand (Request-Scope-Manager, Supplier des realen Objekts) steckt pro Proxy-*Instanz* in
@@ -255,7 +256,7 @@ Lebenszyklus-Ende (Aufruf-transient, nie gecacht). Details siehe
 ### `immediate = true`
 
 Nur für `GLOBAL` sinnvoll (einzige Scope mit genau einer Instanz, die man vorab erzeugen kann).
-Für `THREAD`, `LOCAL` und `REQUEST` ist es eine Fehlkonfiguration, die mit `CannotInject`
+Für `THREAD`, `LOCAL` und `REQUEST` ist es eine Fehlkonfiguration, die mit `ImmediateScopeMisconfiguration`
 fehlschlägt, sobald die Bean erstmals wirklich erzeugt würde — also erst beim ersten
 Proxy-Aufruf sichtbar wird:
 
@@ -269,7 +270,7 @@ OOPDI<ClassImmediateLocalMisconfig> oopdi = new OOPDI<>(ClassImmediateLocalMisco
 oopdi.startup();
 ClassImmediateLocalMisconfig instance = oopdi.getInstance(ClassImmediateLocalMisconfig.class);
 
-CannotInject ex = assertThrows(CannotInject.class, instance::ping);
+ImmediateScopeMisconfiguration ex = assertThrows(ImmediateScopeMisconfiguration.class, instance::ping);
 assertTrue(ex.getMessage().contains("Misconfiguration"));
 ```
 (`TestScopeBehavior.testImmediateLocalScopeMisconfigurationThrows`, analog für `THREAD`/`REQUEST`)
@@ -422,12 +423,13 @@ private String missingValue;
 ```
 
 ```java
-RuntimeException ex = assertThrows(RuntimeException.class, instance::getMissingValue);
+MissingVariable ex = assertThrows(MissingVariable.class, instance::getMissingValue);
 assertTrue(ex.getMessage().contains("definitelyNotSetKey_12345")); // Key steht in der Meldung
 ```
-(`TestVariableInjection.testInjectVariableMissingKeyThrowsDescriptiveError`) — fehlende Keys,
-ungültige Formate und Konfigurationsfehler werfen grundsätzlich `CannotInject` (eine
-`RuntimeException`-Spezialisierung), nie blanke `RuntimeException`.
+(`TestVariableInjection.testInjectVariableMissingKeyThrowsDescriptiveError`) — fehlende Keys
+(`MissingVariable`), ungültige Formate (`InvalidVariableFormat`) und Konfigurationsfehler
+(z.B. `ImmediateScopeMisconfiguration`, `NotInjectableBean`) werfen jeweils eigene
+`RuntimeException`-Typen, nie blanke `RuntimeException`.
 
 ### `optional = true` → `null` statt Exception
 
@@ -438,7 +440,7 @@ private String optionalValue;
 → `instance.getOptionalValue()` liefert `null`.
 
 **Achtung Primitiv-Felder:** `optional = true` ohne Key injiziert `null` — unmöglich für primitive
-Felder. Dort schlägt die Auflösung sofort mit deskriptivem `CannotInject` fehl (Key wird genannt,
+Felder. Dort schlägt die Auflösung sofort mit deskriptivem `OptionalPrimitiveVariable` fehl (Key wird genannt,
 `defaultValue` oder Boxed-Typ empfohlen), statt später kryptisch in `Field.set` zu scheitern
 (`TestVariableInjection.testInjectVariableOptionalPrimitiveFailsDescriptively`, Fixture
 `ClassOptionalPrimitiveVar`).
@@ -461,7 +463,7 @@ Default-Wert dienen.
 
 ```java
 try (var ignored = TestSystemProperties.withProperties(Map.of("matrix.invalid.int", "notANumber"))) {
-    RuntimeException ex = assertThrows(RuntimeException.class, instance::getInvalidInt);
+    InvalidVariableFormat ex = assertThrows(InvalidVariableFormat.class, instance::getInvalidInt);
     assertTrue(ex.getCause() instanceof NumberFormatException);
 }
 ```
@@ -547,8 +549,10 @@ Beans bleiben lesbar.
 Zerstört wird Best-Effort in Drain-Loop-Durchgängen, bis keine unzerstörten Instanzen mehr übrig
 sind (laufende Ketten lassen sich nicht abbrechen und werden von späteren Durchgängen
 aufgesammelt): Ein fehlgeschlagenes `@PreDestroy` bricht den Shutdown **nicht** ab — alle Fehler
-werden als suppressed Exceptions an einem `DestructionFailed` aggregiert. Schlägt Feld-Injection
-oder `@PostConstruct` fehl, wird die halb-initialisierte Bean per Kompensation wieder aus dem Cache
+werden als suppressed Exceptions an einem `DestructionFailed` aggregiert (die einzelnen
+Ursachen tragen `PreDestroyInvocationFailed` als Typ). Schlägt Feld-Injection
+oder `@PostConstruct` fehl (`FieldInjectionFailed` bzw. `PostConstructInvocationFailed`),
+wird die halb-initialisierte Bean per Kompensation wieder aus dem Cache
 entfernt (`TestShutdownLifecycle`).
 
 REQUEST-Beans warten nicht auf `shutdown()`: Sie sterben am Kettenende (gleiche Best-Effort- und
@@ -561,7 +565,7 @@ Aggregations-Semantik; Hauptaufruf-Fehler propagiert mit Cleanup-Fehlern als sup
 ```java
 OOPDI<ClassRoot> oopdi = new OOPDI<>(ClassRoot.class);
 oopdi.startup();
-oopdi.validate(); // wirft CannotInject mit allen Verdrahtungsproblemen — oder schweigt
+oopdi.validate(); // wirft InvalidBeanGraph mit allen Verdrahtungsproblemen — oder schweigt
 ```
 
 `validate()` prüft den von der Root-Klasse erreichbaren Graphen **trocken**: Keine Bean wird
@@ -572,7 +576,8 @@ Profilen des Containers), Variablen-Verfügbarkeit **und** -Parsbarkeit sowie Li
 Kardinalitäten. Als Zyklus zählt nur, was die Runtime wirklich nicht auflösen kann: Schleifen,
 die ausschließlich aus Konstruktor-Kanten bestehen (mit Pfad gemeldet); reine Feld-Schleifen
 löst die Runtime über gecachte Instanzen auf und bleiben still. Alle Probleme landen aggregiert
-in einem `CannotInject`; stilles Zurückkehren heißt, der Graph würde zur Laufzeit auflösen.
+in einem `InvalidBeanGraph` (Einzelbefunde via `getProblems()`, Ursachen als suppressed);
+stilles Zurückkehren heißt, der Graph würde zur Laufzeit auflösen.
 Opt-in — wer es nicht aufruft, merkt keinen Unterschied (`TestStartupValidation`, Fixtures
 `ClassBrokenGraphRoot`, `ClassBrokenCycleA/B`).
 
@@ -662,23 +667,33 @@ Kettenende per `remove()` gelöscht statt auf `false` gesetzt.
 | Mehrere Konstruktoren in einer `@Injectable`-Klasse | `MultipleConstructors` | `testMultipleConstructorsClassConstructorNotInvokedBeforeValidation` |
 | Mehrere `@PostConstruct`-Methoden in einer Hierarchie | `MultiplePostConstructMethods` | — |
 | Mehrere `@PreDestroy`-Methoden in einer Hierarchie | `MultiplePreDestroyMethods` (aggregiert in `DestructionFailed`) | `testMultiplePreDestroyMethodsThrowDedicatedType` |
-| `@InjectVariable` ohne Wert, ohne `optional`/`defaultValue` | `CannotInject` mit Key im Text | `testInjectVariableMissingKeyThrowsDescriptiveError` |
-| `optional = true` + fehlender Key auf primitivem Feld | `CannotInject` (Key genannt, `defaultValue`/Boxed-Typ empfohlen) | `testInjectVariableOptionalPrimitiveFailsDescriptively` |
-| Ungültiges Zahlenformat bei `@InjectVariable` | `CannotInject` mit `NumberFormatException`-Cause | `testInjectVariableInvalidNumericFormatThrows` |
-| `immediate = true` bei `THREAD`/`LOCAL`/`REQUEST` (nur `GLOBAL` erlaubt) | `CannotInject` „Misconfiguration ...“ | `testImmediate*ScopeMisconfigurationThrows` |
-| Klasse ohne `@Injectable` (z. B. Scope-Abfrage) | `CannotInject` statt NPE | `testScopeOfNonInjectableClassFailsDescriptively` |
+| `@InjectVariable` ohne Wert, ohne `optional`/`defaultValue` | `MissingVariable` mit Key im Text | `testInjectVariableMissingKeyThrowsDescriptiveError` |
+| `optional = true` + fehlender Key auf primitivem Feld | `OptionalPrimitiveVariable` (Key genannt, `defaultValue`/Boxed-Typ empfohlen) | `testInjectVariableOptionalPrimitiveFailsDescriptively` |
+| Ungültiges Zahlenformat bei `@InjectVariable` | `InvalidVariableFormat` mit `NumberFormatException`-Cause | `testInjectVariableInvalidNumericFormatThrows` |
+| `immediate = true` bei `THREAD`/`LOCAL`/`REQUEST` (nur `GLOBAL` erlaubt) | `ImmediateScopeMisconfiguration` „Misconfiguration ...“ | `testImmediate*ScopeMisconfigurationThrows` |
+| Klasse ohne `@Injectable` (z. B. Scope-Abfrage) | `NotInjectableBean` statt NPE | `testScopeOfNonInjectableClassFailsDescriptively` |
+| Abstrakte `@Injectable`-Klasse | `AbstractBean` | `testAbstractClassConstructorNotInvokedBeforeValidation` |
+| Kein zugänglicher Konstruktor | `NoAccessibleConstructor` | — |
+| Konstruktor-Zyklus | `ConstructorCycle` (Cause `UnderConstruction`) | — (Graph: Pfad in `InvalidBeanGraph`) |
+| Reflektive Erzeugung / Proxy-Erzeugung schlägt fehl | `BeanInstantiationFailed` mit Cause | `testFinalClassIsReportedByValidationAndRuntime`, `testPrivateConstructorIsReportedByValidationAndRuntime` |
+| Feldinjektion (`Field.set`) schlägt fehl | `FieldInjectionFailed` mit Cause | `testUnassignableVariableValueIsReportedByValidationAndRuntime` |
+| Kein passender `DependencyResolver` | `NoResolverFound` | — |
 | Profil-gefilterte Klasse ohne aktives Profil auflösen | `NoClassesLeftAfterFiltering` | `testProfileFilteredClassCannotBeInstantiatedWhenInactive` |
 | Mehrere konkrete Klassen nach Profilfilterung | `MultipleClassesLeftAfterFiltering` | — |
 | Klassenpfad nicht lesbar (Infrastruktur, kein Filterergebnis) | `ClasspathScanFailed` | — (simuliert in `TestMetadataWarmup`) |
 | Anfrage nach Shutdown-Beginn | `ContainerShutdown` | `testGetInstanceAfterShutdownFailsFast` |
-| Fehlgeschlagene `@PreDestroy` (Shutdown oder Kettenende) | `DestructionFailed` mit suppressed Einzelursachen | `testFailingPreDestroyDoesNotAbortShutdownOfRemainingInstances`, `testFailingRequestPreDestroyIsAggregatedButDestroysTheRest` |
+| Fehlgeschlagene `@PreDestroy` (Shutdown oder Kettenende) | `DestructionFailed` mit suppressed Einzelursachen (`PreDestroyInvocationFailed`) | `testFailingPreDestroyDoesNotAbortShutdownOfRemainingInstances`, `testFailingRequestPreDestroyIsAggregatedButDestroysTheRest` |
+| Fehlgeschlagenes `@PostConstruct` | `PostConstructInvocationFailed` mit Cause | `testFailedPostConstructLeavesNothingBehindInCache` |
 | Warmup-Scan-Fehlschlag bei `WARMUP_FAIL_FAST` | `WarmupFailed` | `testWarmupFailFastModePropagatesJobLevelFailureOnNextGetInstance`, `testWarmupFailFastModePropagatesJobLevelFailureOnBlockingStartup` |
 | Bean-Zugriff/`validate()` vor `startup()` | `ContainerNotStarted` | `testBeanAccessBeforeStartupFailsFast` |
+| Kaputter Bean-Graph bei `validate()` (Dry-Run-Aggregat, eigene Phase) | `InvalidBeanGraph` mit `getProblems()` + suppressed Ursachen | `testBrokenGraphAggregatesAllProblems`, `testValidationFailureTypeDiffersFromRuntimeFailureTypes` |
 | `startup()` nach Shutdown | `ContainerShutdown` (kein Neustart) | `testStartupAfterShutdownFailsFast` |
 | Unbekannter `oopdi.metadata.mode`-Wert | `IllegalArgumentException` | `testInvalidValueThrows` |
 | Exception in proxied Methode | `InvocationTargetException` mit Original als `cause` | `testProxyMethodExceptionPreservesCause` |
 
-Grundsatz: Eignungs-/Konfigurationsfehler werfen `CannotInject` (nie blanke `RuntimeException`
+Grundsatz: Eignungs-/Konfigurationsfehler werfen eigene `RuntimeException`-Typen
+(`NotInjectableBean`, `AbstractBean`, `ImmediateScopeMisconfiguration`, `MissingVariable`,
+`InvalidVariableFormat`, `OptionalPrimitiveVariable`, … — nie blanke `RuntimeException`
 oder NPE), Zerstörungsfehler aggregieren best-effort. Alle Meldungen entstehen per
 `String.formatted()`, auf Englisch — kein `--enable-preview` nötig (stabile Standard-API, keine
 JEP-430/431-Templates).

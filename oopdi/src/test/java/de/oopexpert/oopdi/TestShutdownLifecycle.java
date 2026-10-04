@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test;
 import de.oopexpert.oopdi.exception.ContainerNotStarted;
 import de.oopexpert.oopdi.exception.ContainerShutdown;
 import de.oopexpert.oopdi.exception.DestructionFailed;
+import de.oopexpert.oopdi.exception.PostConstructInvocationFailed;
+import de.oopexpert.oopdi.exception.PreDestroyInvocationFailed;
 import de.oopexpert.oopdi.metadata.MetadataMode;
 import de.oopexpert.oopdi.metadata.MetadataRepository;
 import de.oopexpert.oopdi.proxy.RequestScopeManager;
@@ -115,6 +117,8 @@ class TestShutdownLifecycle {
             "Remaining instances must still be destroyed best-effort after a @PreDestroy failure");
         Assertions.assertFalse(ex.getSuppressed().length == 0,
             "Individual @PreDestroy failures must be aggregated as suppressed exceptions");
+        Assertions.assertTrue(ex.getSuppressed()[0] instanceof PreDestroyInvocationFailed,
+            "Aggregated @PreDestroy failure must carry its dedicated type, but was: " + ex.getSuppressed()[0]);
         Assertions.assertEquals(ContainerStatus.FAILED, oopdi.getStatus());
     }
 
@@ -166,10 +170,10 @@ class TestShutdownLifecycle {
         oopdi.getInstance(ClassFailingPostConstruct.class);
         int baseline = ClassFailingPostConstruct.constructorCallCount.get();
 
-        Assertions.assertThrows(RuntimeException.class, () -> oopdi.getInstance(ClassFailingPostConstruct.class).ping(),
+        Assertions.assertThrows(PostConstructInvocationFailed.class, () -> oopdi.getInstance(ClassFailingPostConstruct.class).ping(),
             "Failing @PostConstruct must propagate");
 
-        Assertions.assertThrows(RuntimeException.class, () -> oopdi.getInstance(ClassFailingPostConstruct.class).ping(),
+        Assertions.assertThrows(PostConstructInvocationFailed.class, () -> oopdi.getInstance(ClassFailingPostConstruct.class).ping(),
             "A failed bean must not stay behind half-initialized in the cache");
 
         Assertions.assertEquals(baseline + 2, ClassFailingPostConstruct.constructorCallCount.get(),
@@ -224,12 +228,14 @@ class TestShutdownLifecycle {
 
         // The AssertionError surfaces wrapped (reflection wraps it in InvocationTargetException
         // at the invoke boundary); what matters here is that nothing stays cached.
-        RuntimeException first = Assertions.assertThrows(RuntimeException.class,
+        RuntimeException first = Assertions.assertThrows(PostConstructInvocationFailed.class,
             () -> oopdi.getInstance(ClassFailingPostConstructError.class).ping(),
             "Failing @PostConstruct must propagate");
         Assertions.assertTrue(first.getMessage().contains("Failed to invoke @PostConstruct"));
+        Assertions.assertTrue(first.getCause() instanceof java.lang.reflect.InvocationTargetException,
+            "Reflection must wrap the original error as the cause");
 
-        Assertions.assertThrows(RuntimeException.class, () -> oopdi.getInstance(ClassFailingPostConstructError.class).ping(),
+        Assertions.assertThrows(PostConstructInvocationFailed.class, () -> oopdi.getInstance(ClassFailingPostConstructError.class).ping(),
             "A failed bean must not stay behind half-initialized in the cache, including on Error");
 
         Assertions.assertEquals(2, ClassFailingPostConstructError.constructorCallCount.get(),

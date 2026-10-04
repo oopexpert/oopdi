@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import de.oopexpert.oopdi.exception.DestructionFailed;
+import de.oopexpert.oopdi.exception.PreDestroyInvocationFailed;
 import de.oopexpert.teststructure.ClassRequestFailingPreDestroy;
 import de.oopexpert.teststructure.ClassRequestPreDestroy;
 
@@ -83,6 +84,8 @@ class TestRequestDestruction {
             "Remaining request beans must still be destroyed best-effort after a cleanup failure");
         Assertions.assertFalse(ex.getSuppressed().length == 0,
             "Cleanup failures must be aggregated as suppressed exceptions");
+        Assertions.assertTrue(ex.getSuppressed()[0] instanceof PreDestroyInvocationFailed,
+            "Aggregated cleanup failure must carry its dedicated type, but was: " + ex.getSuppressed()[0]);
     }
 
     @Test

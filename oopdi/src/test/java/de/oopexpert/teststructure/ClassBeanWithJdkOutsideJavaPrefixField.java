@@ -10,7 +10,7 @@ import de.oopexpert.oopdi.annotation.Injectable;
  * display/AWT toolkit to construct and is safe to instantiate headless; it only serves here to
  * demonstrate that a JDK type OUTSIDE the "java." package prefix (i.e. "javax.") was
  * previously misdetected as an injection point by the constructor-parameter type-name
- * fallback in {@code InstanceDependencyResolver}, causing {@code CannotInject} ("it is not
+ * fallback in {@code InstanceDependencyResolver}, causing {@code NotInjectableBean} ("it is not
  * annotated as 'Injectable'") for an unannotated field.
  */
 @Injectable

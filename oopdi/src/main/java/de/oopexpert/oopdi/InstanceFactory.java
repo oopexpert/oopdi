@@ -13,8 +13,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import de.oopexpert.oopdi.annotation.Injectable;
-import de.oopexpert.oopdi.exception.CannotInject;
+import de.oopexpert.oopdi.exception.AbstractBean;
+import de.oopexpert.oopdi.exception.BeanInstantiationFailed;
+import de.oopexpert.oopdi.exception.ConstructorCycle;
 import de.oopexpert.oopdi.exception.ContainerShutdown;
+import de.oopexpert.oopdi.exception.ImmediateScopeMisconfiguration;
+import de.oopexpert.oopdi.exception.NoAccessibleConstructor;
+import de.oopexpert.oopdi.exception.NotInjectableBean;
 import de.oopexpert.oopdi.exception.UnderConstruction;
 import de.oopexpert.oopdi.metadata.ClassMetadata;
 import de.oopexpert.oopdi.metadata.MetadataRepository;
@@ -48,7 +53,7 @@ public class InstanceFactory {
 
 	public <A> void checkImmediateInstantiationConfiguration(Class<A> c) {
 		if (ProxyManager.isImmediateInstantiationRequested(c) && !Scope.isImmediateInstantiationPossible(c)) {
-			throw new CannotInject("Misconfiguration of class '%s': it is configured to be instantiated immediately, but this is only possible with scope GLOBAL.".formatted(c.getName()));
+			throw new ImmediateScopeMisconfiguration("Misconfiguration of class '%s': it is configured to be instantiated immediately, but this is only possible with scope GLOBAL.".formatted(c.getName()));
 		}
 	}
 
@@ -60,10 +65,10 @@ public class InstanceFactory {
 		} catch (RuntimeException re) {
 			// Load-bearing passthrough (not dead code): without this branch, runtime
 			// exceptions would fall into the Exception handler below and be wrongly
-			// wrapped as CannotInject. Do not "simplify" away.
+			// wrapped. Do not "simplify" away.
 			throw re;
 		} catch (Exception e) {
-			throw new CannotInject("Failed to resolve bean for '%s'.".formatted(x.getName()), e);
+			throw new BeanInstantiationFailed("Failed to resolve bean for '%s'.".formatted(x.getName()), e);
 		}
 	}
 
@@ -156,9 +161,9 @@ public class InstanceFactory {
 		try {
 			return instantiateWith(getConstructor(c));
 		} catch (UnderConstruction cd) {
-			throw new CannotInject("Cycle in dependencies detected while performing constructor injection on '%s'.".formatted(c.getName()), cd);
+			throw new ConstructorCycle("Cycle in dependencies detected while performing constructor injection on '%s'.".formatted(c.getName()), cd);
 		} catch (Exception e) {
-			throw new CannotInject("Failed to instantiate class '%s'.".formatted(c.getName()), e);
+			throw new BeanInstantiationFailed("Failed to instantiate class '%s'.".formatted(c.getName()), e);
 		} finally {
 			restoreConstructionPhase(directConstructionPhase, previousPhase);
 			scopedMap.unmarkUnderConstruction(c);
@@ -202,20 +207,20 @@ public class InstanceFactory {
 		ClassMetadata metadata = metadataRepository.getMetadata(c);
 		Constructor<?> primaryConstructor = metadata.getPrimaryConstructor();
 		if (primaryConstructor == null) {
-			throw new CannotInject("No accessible constructor found for '%s'.".formatted(c.getName()));
+			throw new NoAccessibleConstructor("No accessible constructor found for '%s'.".formatted(c.getName()));
 		}
 		return primaryConstructor;
 	}
 	
 	private <A> void checkNonAbstract(Class<A> c) {
 		if (Modifier.isAbstract(c.getModifiers())) {
-			throw new CannotInject("Cannot instantiate class '%s': it is abstract.".formatted(c.getName()));
+			throw new AbstractBean("Cannot instantiate class '%s': it is abstract.".formatted(c.getName()));
 		}
 	}
 
 	private <A> void checkInjectableAnnotated(Class<A> c) {
 		if (!c.isAnnotationPresent(Injectable.class)) {
-			throw new CannotInject("Will not instantiate class '%s': it is not annotated as 'Injectable'.".formatted(c.getName()));
+			throw new NotInjectableBean("Will not instantiate class '%s': it is not annotated as 'Injectable'.".formatted(c.getName()));
 		}
 	}
 }
