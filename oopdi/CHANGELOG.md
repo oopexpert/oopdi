@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.0 (2026-10-04)
+
+- fix: make validator assignability check exact for primitive fields
+- feat!: replace generic CannotInject with dedicated failure taxonomy
+
 ## 1.0.1 (2026-10-01)
 
 - fix: restrict field injection detection to @InjectInstance only
